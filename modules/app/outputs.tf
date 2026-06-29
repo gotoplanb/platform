@@ -1,0 +1,51 @@
+output "ecr_repository_url" {
+  description = "Push the app image here (the pipeline #10 builds + pushes)."
+  value       = aws_ecr_repository.app.repository_url
+}
+
+output "alb_dns_name" {
+  description = "ALB DNS (the #13 DNS record points at this)."
+  value       = aws_lb.this.dns_name
+}
+
+output "alb_arn" {
+  value = aws_lb.this.arn
+}
+
+output "cluster_name" {
+  value = aws_ecs_cluster.this.name
+}
+
+output "service_name" {
+  value = aws_ecs_service.this.name
+}
+
+output "task_definition_arn" {
+  value = aws_ecs_task_definition.app.arn
+}
+
+# Blue/green wiring for the CodeDeploy deployment group (#10).
+output "blue_target_group_name" {
+  value = aws_lb_target_group.blue.name
+}
+
+output "green_target_group_name" {
+  value = aws_lb_target_group.green.name
+}
+
+output "production_listener_arn" {
+  value = aws_lb_listener.production.arn
+}
+
+output "test_listener_arn" {
+  value = aws_lb_listener.test.arn
+}
+
+output "task_role_arn" {
+  description = "Task role — #7/#8 attach Step Functions / SQS policies here."
+  value       = aws_iam_role.task.arn
+}
+
+output "execution_role_arn" {
+  value = aws_iam_role.execution.arn
+}
