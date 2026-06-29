@@ -121,6 +121,24 @@ Rough monthly (us-east-1, on-demand), **lean** profile, single persistent prod:
 
 Ephemeral `staging` adds only the hours it runs. The **`ha`** profile (private + NAT +
 Multi-AZ, two persistent envs) is ~$220–280/mo — applied deliberately, never by default.
+(AWS bills public IPv4 ~$0.005/hr each — ALB, public-IP Fargate, NAT EIP — so lean *left
+running* is nearer ~$70–95/mo; pennies for short test cycles.)
+
+## Dev/test loop: create → verify → destroy
+Most resources bill **hourly, not per-create**, so validating a profile is cheap:
+lean ≈ $0.10/hr, ha ≈ $0.35/hr → a full **create → verify → destroy** of both ≈ **a few
+dollars** over an afternoon.
+- **Keep the foundation up** (≈$0, must not churn): state backend (S3+DynamoDB), OIDC,
+  GitHub + Cloudflare config. The loop only creates/destroys the **per-env app stacks**
+  (network/data/app/escalation/intake/frontend/pipeline).
+- **Make `destroy` clean** so nothing lingers billable / blocks teardown: RDS
+  `deletion_protection=false` + `skip_final_snapshot=true` (ephemeral), buckets
+  `force_destroy=true` (frontend/artifacts), short CloudWatch log retention. **Real prod
+  overrides these** (deletion protection + final snapshot on).
+- **Budget wall-clock, not dollars:** RDS Multi-AZ and CloudFront are slow to create *and*
+  destroy (CloudFront disable+delete ~15–40 min).
+- After teardown, a quick orphan sweep (EIPs, snapshots, volumes, log groups) keeps it
+  truly a-few-bucks.
 
 ## Extending to private subnets + NAT (the `ha` profile)
 > The `network` stack defaults to **public subnets**, chosen for cost + simplicity during
