@@ -17,6 +17,8 @@ tofu.log
 # Credentials / secrets — never commit
 .env
 .env.*
+# keep the committed template (no real values)
+!.env.example
 *.pem
 *_rsa
 *.auto.tfvars
