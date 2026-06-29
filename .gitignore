@@ -1,6 +1,6 @@
 # Terraform / OpenTofu / Terragrunt
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl IS committed (pins provider versions/checksums — reproducible IaC)
 *.tfstate
 *.tfstate.*
 crash.log
