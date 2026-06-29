@@ -10,8 +10,14 @@ durable **intake**, S3+CloudFront **status page**, OTel → **Watchtower**, all 
 **Terragrunt** with **GitHub validates / AWS adjudicates** (ADR-004).
 
 ## Decisions for this rollout
-- **Single AWS account, two envs:** `staging` + `prod` (staging exercises the full
-  pipeline + blue/green + migrations before prod). Single-region, Multi-AZ (ADR-005).
+- **Single AWS account; persistent `prod` + ephemeral `staging`.** Staging is spun up for
+  a pipeline run (blue/green + migration exercise) then `terragrunt destroy`-ed — pay for
+  pre-prod only while it runs. Single-region (ADR-005).
+- **Cost profile = `lean` by default (ADR-015):** public subnets + public-IP Fargate
+  (**no NAT**), RDS single-AZ (Multi-AZ optional) → **~$60–90/mo**. A Terragrunt toggle
+  (`enable_nat`/`private_networking`, `multi_az`) flips to the **`ha`** profile (private
+  subnets + NAT + Multi-AZ — the ADR-005 design) for occasional secure testing; both
+  paths stay validated. See *Cost profile* + *Extending to private subnets + NAT* below.
 - **GitHub → AWS via OIDC** role assumption — no long-lived keys.
 - **This phase = author + validate IaC; apply deferred.** No AWS access in the build
   sandbox, so we write all Terragrunt + Lambda packaging and run `tofu validate` / `fmt`
@@ -97,6 +103,37 @@ exception triage") acts on a **running** system, so it's integrated after the pi
 build: clean **CloudWatch alarms** (#7, #11), **OTel** telemetry, **CodePipeline/CodeBuild**
 (#10), **GitHub PR checks** (#15). Keep those first-class so it lights up the moment we
 deploy (idle-free billing + 2-month trial = ~$0 until invoked).
+
+## Cost profile (ADR-015)
+Rough monthly (us-east-1, on-demand), **lean** profile, single persistent prod:
+
+| Component | ~$/mo | Note |
+|---|--:|---|
+| ALB | 22 | HTTPS + CodeDeploy blue/green |
+| RDS Postgres (single-AZ `db.t4g.micro`) | 14 | Multi-AZ ≈ +$13 (ADR-005) |
+| Fargate (1× 0.25 vCPU / 0.5 GB) + AppConfig sidecar | 9 | |
+| ElastiCache Valkey (`cache.t4g.micro`, optional) | 0–12 | skip for a single task (local-memory sessions) |
+| CloudWatch / Secrets / KMS / CodePipeline+Build / S3+CloudFront / ECR | ~12 | small fixed bits |
+| Step Functions / Lambda / SQS / API GW (<100 incidents/day) | ~1 | basically free |
+| NAT gateway | **0** | lean = public subnets, no NAT (~$36/env saved) |
+| AWS DevOps Agent (#17) | **0** | flagged off + 2-mo trial; bills only when invoked |
+| **≈ total** | **~$60–85** | |
+
+Ephemeral `staging` adds only the hours it runs. The **`ha`** profile (private + NAT +
+Multi-AZ, two persistent envs) is ~$220–280/mo — applied deliberately, never by default.
+
+## Extending to private subnets + NAT (the `ha` profile)
+> The `network` stack defaults to **public subnets**, chosen for cost + simplicity during
+> development. Switching to the secure profile is a **variable change, not a rewrite**:
+- `private_networking = true` (+ `enable_nat = true`): `network` creates **private subnets
+  + NAT gateway(s)** (one per AZ for HA, or a single NAT to save cost) and routes egress
+  through them; public subnets keep only the ALB.
+- App: `assign_public_ip = false`, Fargate moves to the private subnets; add priced **VPC
+  interface endpoints** (ECR api/dkr, SSM, Secrets Manager, Logs) so it pulls images +
+  reads secrets without internet egress.
+- Data: `multi_az = true` (ADR-005 survival).
+- CI runs `tofu plan` on **both** profiles so the `ha` path never bit-rots. Apply it for
+  occasional secure testing, then `terragrunt destroy` back to lean.
 
 ## Apply order
 00 (operator: CLI + bootstrap creds) → 0a → 0b → 1 → (2,3 parallel) → (6 intake parallel
