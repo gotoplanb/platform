@@ -85,7 +85,18 @@ local-hook gap, ADR-004).
 ## Open inputs (needed before `apply`)
 AWS account id, region, domain name (Cloudflare zone), and whether **Watchtower is
 reachable from AWS** (or we run an OTel Collector/Alloy in-VPC that forwards to it). Paging
-(ntfy, ADR-013 / issue #8) layers on after the app tier is live.
+(ntfy, ADR-013 / `gotoplanb/watch#8`) layers on after the app tier is live.
+- **Region:** pick a region supported by **AWS DevOps Agent** (#17) — us-east-1 /
+  us-west-2 / eu-central-1 / eu-west-1 / ap-southeast-2 / ap-northeast-1 — to keep that
+  option open.
+
+## AWS DevOps Agent (#17) — design-for-it now, integrate later
+DevOps Agent (agentic incident investigation + release readiness; realizes §8 "AI-assisted
+exception triage") acts on a **running** system, so it's integrated after the pipeline (#10)
++ observability (#11) land — not at bootstrap. But its inputs are exactly what we already
+build: clean **CloudWatch alarms** (#7, #11), **OTel** telemetry, **CodePipeline/CodeBuild**
+(#10), **GitHub PR checks** (#15). Keep those first-class so it lights up the moment we
+deploy (idle-free billing + 2-month trial = ~$0 until invoked).
 
 ## Apply order
 00 (operator: CLI + bootstrap creds) → 0a → 0b → 1 → (2,3 parallel) → (6 intake parallel
