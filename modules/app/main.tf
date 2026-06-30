@@ -17,6 +17,10 @@ locals {
   app_port         = 8000
   appconfig_port   = 2772
 
+  # The escalation state machine (#7) is named var.name; predict its ARN so the app can
+  # StartExecution / SendTaskSuccess without a circular dependency on the escalation stack.
+  escalation_state_machine_arn = "arn:aws:states:${var.region}:${data.aws_caller_identity.current.account_id}:stateMachine:${var.name}"
+
   # Non-secret container env (the app reads these; secrets come via the `secrets` block).
   app_environment = [
     { name = "POSTGRES_HOST", value = var.db_address },
@@ -30,6 +34,7 @@ locals {
     { name = "APPCONFIG_ENVIRONMENT", value = var.appconfig_environment_name },
     { name = "APPCONFIG_PROFILE", value = var.appconfig_profile_name },
     { name = "AWS_REGION", value = var.region },
+    { name = "ESCALATION_STATE_MACHINE_ARN", value = local.escalation_state_machine_arn },
     # ALB-only ingress (SG) is the trust boundary; #13 tightens this to the real domain.
     { name = "DJANGO_ALLOWED_HOSTS", value = "*" },
     { name = "OTEL_ENABLED", value = local.otel_enabled ? "1" : "0" },

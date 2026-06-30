@@ -27,3 +27,6 @@ tofu.log
 .DS_Store
 .idea/
 .vscode/
+
+# Generated Lambda placeholder package
+modules/escalation/placeholder/handler.zip

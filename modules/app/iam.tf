@@ -72,3 +72,31 @@ resource "aws_iam_role_policy_attachment" "task_appconfig" {
   role       = aws_iam_role.task.name
   policy_arn = var.appconfig_read_policy_arn
 }
+
+# Escalation engine (#7, ADR-007/010): the API starts one execution per incident and
+# advances tiers via SendTaskSuccess. StartExecution is scoped to the state machine;
+# the SendTask* calls are token-based (resource "*"); DescribeExecution to its executions.
+resource "aws_iam_role_policy" "task_escalation" {
+  name = "${var.name}-escalation"
+  role = aws_iam_role.task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["states:StartExecution"]
+        Resource = local.escalation_state_machine_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["states:DescribeExecution", "states:StopExecution"]
+        Resource = "arn:aws:states:${var.region}:${data.aws_caller_identity.current.account_id}:execution:${var.name}:*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["states:SendTaskSuccess", "states:SendTaskFailure", "states:SendTaskHeartbeat"]
+        Resource = "*"
+      },
+    ]
+  })
+}
