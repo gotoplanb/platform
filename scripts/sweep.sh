@@ -20,7 +20,9 @@ STATE_BUCKET_RE='watch-tfstate-|watch-tflocks'
 
 check() { # check "<label>" "<newline/space-separated ids, empty if clean>"
   local label="$1" ids="$2"
+  # `aws ... --output text` prints the literal "None" for an empty/null result — not an id.
   ids="$(echo "$ids" | tr '\t' ' ' | xargs 2>/dev/null || true)"
+  [ "$ids" = "None" ] && ids=""
   if [ -n "$ids" ]; then
     local n; n=$(echo "$ids" | wc -w | tr -d ' ')
     found=$((found + n))
@@ -54,7 +56,7 @@ check "CloudFront(enabled)" "$(aws cloudfront list-distributions --query 'Distri
 check "Lambda functions"    "$(Q lambda list-functions --query 'Functions[?starts_with(FunctionName,`watch`)].FunctionName' --output text)"
 check "SQS queues"          "$(Q sqs list-queues --queue-name-prefix watch --query 'QueueUrls[]' --output text | tr '\t' '\n' | sed 's#.*/##' | tr '\n' ' ')"
 check "Step Functions"      "$(Q stepfunctions list-state-machines --query 'stateMachines[?starts_with(name,`watch`)].name' --output text)"
-check "API Gateway(HTTP)"   "$(Q apigatewayv2 get-apis --query 'Items[].Name' --output text)"
+check "API Gateway(HTTP)"   "$(Q apigatewayv2 get-apis --query 'Items[?starts_with(Name,`watch`)].Name' --output text)"
 check "CW log groups"       "$(Q logs describe-log-groups --query 'logGroups[?starts_with(logGroupName,`/ecs/watch`) || starts_with(logGroupName,`/aws/lambda/watch`)].logGroupName' --output text)"
 
 echo
