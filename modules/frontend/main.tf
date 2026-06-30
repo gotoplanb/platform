@@ -7,6 +7,12 @@
 
 locals {
   use_custom_domain = length(var.aliases) > 0 && var.acm_certificate_arn != ""
+  has_api           = var.api_origin_domain != ""
+}
+
+# Forward everything except Host so the ALB sees its own host (matches ALLOWED_HOSTS).
+data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
+  name = "Managed-AllViewerExceptHostHeader"
 }
 
 resource "aws_s3_bucket" "site" {
@@ -61,6 +67,22 @@ resource "aws_cloudfront_distribution" "site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
+  # Optional API proxy origin (the ALB). Viewer side stays HTTPS; CloudFront talks HTTP
+  # to the ALB — so the status page is same-origin HTTPS with no mixed-content/CORS.
+  dynamic "origin" {
+    for_each = local.has_api ? [1] : []
+    content {
+      origin_id   = "alb"
+      domain_name = var.api_origin_domain
+      custom_origin_config {
+        http_port              = 80
+        https_port             = 443
+        origin_protocol_policy = "http-only"
+        origin_ssl_protocols   = ["TLSv1.2"]
+      }
+    }
+  }
+
   # Default (index.html / root): SHORT TTL so a new deploy is picked up immediately.
   default_cache_behavior {
     target_origin_id       = "s3"
@@ -80,6 +102,21 @@ resource "aws_cloudfront_distribution" "site" {
     cached_methods         = ["GET", "HEAD"]
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
     compress               = true
+  }
+
+  # /api/* -> ALB (no caching; forward everything but Host). Lets the SPA poll /api/status.
+  dynamic "ordered_cache_behavior" {
+    for_each = local.has_api ? [1] : []
+    content {
+      path_pattern             = "/api/*"
+      target_origin_id         = "alb"
+      viewer_protocol_policy   = "redirect-to-https"
+      allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+      cached_methods           = ["GET", "HEAD"]
+      cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
+      origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+      compress                 = true
+    }
   }
 
   # SPA routing: unknown paths fall back to index.html.
