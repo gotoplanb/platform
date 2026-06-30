@@ -29,4 +29,4 @@ tofu.log
 .vscode/
 
 # Generated Lambda placeholder package
-modules/escalation/placeholder/handler.zip
+modules/**/handler.zip
