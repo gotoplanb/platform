@@ -82,9 +82,9 @@ inputs = {
   appconfig_read_policy_arn       = dependency.config.outputs.appconfig_read_policy_arn
   secrets_read_policy_arn         = dependency.config.outputs.secrets_read_policy_arn
 
-  # Tasks await the first image from the pipeline (#10). Set desired_count/autoscale_min
-  # > 0 once ECR has an image; until then keep the service at zero (no failing tasks).
-  desired_count = 0
-  autoscale_min = 0
-  autoscale_max = 6
+  # Going live: the pipeline (#10) builds the first image; CodeDeploy places green tasks
+  # at this count. 1 task is enough to verify end-to-end (autoscaling floor = 1).
+  desired_count = 1
+  autoscale_min = 1
+  autoscale_max = 4
 }
