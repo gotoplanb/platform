@@ -171,3 +171,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "app_hostname" {
+  description = "If set, add an HTTPS :443 listener using the ACM cert for this domain (#13)."
+  type        = string
+  default     = ""
+}

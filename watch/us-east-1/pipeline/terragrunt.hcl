@@ -34,6 +34,7 @@ dependency "prod_app" {
   mock_outputs = {
     cluster_name            = "watch-prod", service_name = "watch-prod"
     production_listener_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/y"
+    https_listener_arn      = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/h"
     test_listener_arn       = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/z"
     blue_target_group_name  = "watch-prod-blue", green_target_group_name = "watch-prod-green"
     execution_role_arn      = "arn:aws:iam::000000000000:role/watch-prod-exec"
@@ -84,7 +85,7 @@ inputs = {
     cluster_name            = dependency.prod_app.outputs.cluster_name
     service_name            = dependency.prod_app.outputs.service_name
     task_family             = "watch-prod"
-    production_listener_arn = dependency.prod_app.outputs.production_listener_arn
+    production_listener_arn = dependency.prod_app.outputs.https_listener_arn # :443 (#13)
     test_listener_arn       = dependency.prod_app.outputs.test_listener_arn
     blue_target_group_name  = dependency.prod_app.outputs.blue_target_group_name
     green_target_group_name = dependency.prod_app.outputs.green_target_group_name

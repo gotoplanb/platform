@@ -53,7 +53,9 @@ resource "aws_lb_target_group" "green" {
   tags = merge(var.tags, { Name = "${var.name}-green" })
 }
 
+# Non-HTTPS envs: :80 is the CodeDeploy production listener (forward, swapped).
 resource "aws_lb_listener" "production" {
+  count             = var.app_hostname == "" ? 1 : 0
   load_balancer_arn = aws_lb.this.arn
   port              = 80
   protocol          = "HTTP"
@@ -69,6 +71,23 @@ resource "aws_lb_listener" "production" {
   }
 }
 
+# HTTPS envs: :443 is production (above); :80 just redirects to it (HTTPS-only, #13).
+resource "aws_lb_listener" "http_redirect" {
+  count             = var.app_hostname != "" ? 1 : 0
+  load_balancer_arn = aws_lb.this.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
 resource "aws_lb_listener" "test" {
   load_balancer_arn = aws_lb.this.arn
   port              = 8080
@@ -81,5 +100,33 @@ resource "aws_lb_listener" "test" {
 
   lifecycle {
     ignore_changes = [default_action]
+  }
+}
+
+# HTTPS production listener (#13). When app_hostname is set, find its ACM cert (the DNS
+# stack created it) and serve :443. The pipeline repoints CodeDeploy's prod route here, so
+# blue/green swaps :443. (:80 redirect → :443 is a follow-up.)
+data "aws_acm_certificate" "app" {
+  count       = var.app_hostname != "" ? 1 : 0
+  domain      = var.app_hostname
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
+resource "aws_lb_listener" "https" {
+  count             = var.app_hostname != "" ? 1 : 0
+  load_balancer_arn = aws_lb.this.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = data.aws_acm_certificate.app[0].arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.blue.arn
+  }
+
+  lifecycle {
+    ignore_changes = [default_action] # CodeDeploy swaps the forward target
   }
 }

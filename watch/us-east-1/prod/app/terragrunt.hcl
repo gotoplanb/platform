@@ -66,6 +66,7 @@ inputs = {
 
   private_networking   = local.env.private_networking
   image_repository_url = dependency.ecr.outputs.repository_url
+  app_hostname         = "watch.davestanton.com" # adds the ALB :443 HTTPS listener (#13)
 
   vpc_id             = dependency.network.outputs.vpc_id
   public_subnet_ids  = dependency.network.outputs.public_subnet_ids

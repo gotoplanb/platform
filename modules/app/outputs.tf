@@ -34,7 +34,8 @@ output "green_target_group_name" {
 }
 
 output "production_listener_arn" {
-  value = aws_lb_listener.production.arn
+  description = "Active production listener: :443 when app_hostname set (#13), else :80."
+  value       = var.app_hostname != "" ? aws_lb_listener.https[0].arn : aws_lb_listener.production[0].arn
 }
 
 output "test_listener_arn" {
@@ -48,4 +49,9 @@ output "task_role_arn" {
 
 output "execution_role_arn" {
   value = aws_iam_role.execution.arn
+}
+
+output "https_listener_arn" {
+  description = "ALB :443 production listener (#13); null until app_hostname is set."
+  value       = var.app_hostname != "" ? aws_lb_listener.https[0].arn : null
 }
