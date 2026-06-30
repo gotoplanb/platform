@@ -81,7 +81,7 @@ resource "aws_lambda_function" "authorizer" {
 
 data "archive_file" "consumer" {
   type        = "zip"
-  source_file = "${path.module}/consumer/handler.py"
+  source_file = "${path.module}/consumer/intake_consumer.py"
   output_path = "${path.module}/consumer/handler.zip"
 }
 
@@ -138,7 +138,7 @@ resource "aws_lambda_function" "consumer" {
   function_name = "${var.name}-intake-consumer"
   role          = aws_iam_role.consumer.arn
   runtime       = "python3.12"
-  handler       = "handler.handler"
+  handler       = "intake_consumer.handler"
   timeout       = var.lambda_timeout
   memory_size   = 512
 
@@ -162,6 +162,7 @@ resource "aws_lambda_function" "consumer" {
       AWS_REGION_NAME              = var.region
       FLAGS_PROVIDER               = "memory"
       ESCALATION_STATE_MACHINE_ARN = local.escalation_state_machine_arn
+      ESCALATION_LOCAL_MODE        = "0" # use the real Step Functions engine (default is local)
     }
   }
 

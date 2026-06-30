@@ -35,6 +35,7 @@ locals {
     { name = "APPCONFIG_PROFILE", value = var.appconfig_profile_name },
     { name = "AWS_REGION", value = var.region },
     { name = "ESCALATION_STATE_MACHINE_ARN", value = local.escalation_state_machine_arn },
+    { name = "ESCALATION_LOCAL_MODE", value = "0" }, # real Step Functions engine (default is local)
     # ALB-only ingress (SG) is the trust boundary; #13 tightens this to the real domain.
     { name = "DJANGO_ALLOWED_HOSTS", value = "*" },
     { name = "OTEL_ENABLED", value = local.otel_enabled ? "1" : "0" },
