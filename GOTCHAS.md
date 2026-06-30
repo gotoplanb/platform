@@ -1,0 +1,84 @@
+# Rollout gotchas — Watch on AWS (v0.1.0)
+
+Operational landmines hit while bringing Watch live (epic #16). The forward plan is
+[`ROLLOUT.md`](ROLLOUT.md); the *why* behind decisions is the ADRs in `gotoplanb/watch`.
+This file is the "things that cost us an hour" list — read it before the next env.
+
+## Terragrunt / OpenTofu
+- **`run-all` is gone.** The redesigned CLI is `terragrunt run --all apply` /
+  `run --all destroy`; the non-interactive flag is `--non-interactive` (not the old
+  `--terragrunt-non-interactive`). We drive OpenTofu via `TG_TF_PATH=tofu terragrunt …`.
+- **One `required_providers` block per module.** Adding a 2nd provider (Cloudflare,
+  GitHub) to a stack that inherits the root AWS provider needs the deep-merge include
+  override (`include "root" { merge_strategy = "deep" }`) plus a `generate "versions"`
+  block that re-declares aws **and** the extra provider — you can't just add a second
+  `required_providers`.
+- **Cloudflare provider v4 naming.** `cloudflare_record` takes `content` (not `value`);
+  `data.cloudflare_zone` is looked up by `name`. v4.52.8 specifically.
+
+## DNS / TLS (Cloudflare, davestanton.com)
+- **Never touch the apex.** Only ever create the *named subdomain* records
+  (`watch.`, `status.`, and the ACM validation CNAMEs) as individual
+  `cloudflare_record` resources. No apex/MX/zone-authoritative records — the token is
+  scoped "Edit zone DNS" and the IaC stays surgical so a bad plan can't nuke the root.
+- ACM cert lives in **us-east-1** (CloudFront requirement), DNS-validated; validation
+  records use `proxied = false` and `trimsuffix(record_name, ".")`.
+
+## App behind the ALB (Django)
+- **CSRF 403 on login behind a TLS-terminating ALB.** The ALB terminates TLS and talks
+  HTTP to the task, so Django thinks the request is insecure and rejects the cross-origin
+  POST. Fix: `SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https")` +
+  `CSRF_TRUSTED_ORIGINS=https://<host>` + secure session/CSRF cookies. These are wired
+  via the app stack only when `app_hostname != ""`.
+- **`:80 → :443` redirect broke the CloudFront `/api` proxy.** Once the app listener
+  301-redirected to HTTPS, CloudFront's `/api` origin (which hit `:80`) got the redirect
+  instead of a response → status page showed "Backend unreachable." We **retired the
+  proxy**: the status SPA fetches `https://watch.davestanton.com` directly via CORS.
+- **ALB `:80` listener replacement → `DuplicateListener`.** create-before-destroy tries
+  to stand up the new `:80` listener while the old one still holds the port. Splitting
+  into a redirect listener resolved it once the failed apply had freed `:80`.
+- **`waitForTaskToken` must set `ResultPath` (`$.decision`)** or the task output replaces
+  the whole state and wipes `incidentId` for later tiers (ADR-007).
+
+## Lambda packaging
+- **250 MB unzipped limit.** `cp -r backend/.` dragged in the fat `.venv` that
+  `make coverage` builds → over the limit. Copy only `backend/config` + `backend/incidents`,
+  and use a slim `escalation/lambdas/requirements.txt` (no OTel/gRPC).
+- **Handler string must match the packaged filename.** `handler.handler` failed because
+  the file was `intake_consumer.py` → set the handler to `intake_consumer.handler`.
+
+## Pipeline / build-once-promote-by-digest (ADR-017)
+- **`ESCALATION_LOCAL_MODE` defaults to local.** Unset, `start_escalation` uses the
+  in-process stub instead of real Step Functions. Set `"0"` explicitly in **both** the app
+  and intake consumer task envs.
+- **Docker Hub 429s in CodeBuild.** Use an ECR Public base
+  (`public.ecr.aws/docker/library/python:…-slim-bookworm`), not `python:…` from Docker Hub.
+- **buildspec shell functions don't survive.** Each buildspec command runs in its own
+  shell, so a `render()` function defined earlier is "command not found" later. Inline the
+  per-env render loop.
+- **Immutable ECR + a re-run = tag conflict.** Push idempotently: `aws ecr describe-images`
+  for the tag, reuse if present, else build+push. Promotion then references the digest
+  (`image@sha256:…`), identical staging→prod.
+- **Pipeline role needs `codedeploy:GetApplication` + `GetDeploymentGroup`.** First live
+  run failed without them; a retry can race IAM propagation — wait, then re-run.
+
+## Cost guardrails
+- **A *daily* spend alarm is AWS Budgets, not a CloudWatch billing alarm.** CloudWatch's
+  `EstimatedCharges` is month-to-date cumulative, so it can't answer "did we overspend
+  *today*." Use an `aws_budgets_budget` with `time_unit = "DAILY"` (see `modules/budget`).
+
+## Operating posture & verification
+- **Two creds, separated by duty.** `watch-ro` (ReadOnlyAccess) for all CLI
+  verification; `watch-bootstrap` (temp admin) only for applies. No long-lived write keys.
+- **Verify UIs by *viewing* them, not curl.** A `200` is not proof — a broken status page
+  still returns 200. Drive the real browser via the Playwright MCP. The container has no
+  host mount, so screenshots land at `/home/node/<f>.png` inside it — retrieve with
+  `docker cp <cid>:/home/node/<f>.png`. Submit forms with `form.requestSubmit()` (not
+  `form.submit()` — a field named `submit` shadows the method).
+
+## Verified end-to-end at v0.1.0
+Intake webhook → SQS → consumer → incident; escalation auto-timeout commit + human
+resolve via `/ui`; promote-by-digest (identical sha256 staging+prod); HTTPS-only on
+`watch.davestanton.com` (app) + `status.davestanton.com` (status SPA), CSRF login working,
+root landing page, daily cost budget. Remaining: #17 DevOps Agent, #32 DAST, and the
+observability/account-seam follow-ups (#18/#19/#21/#22/#23/#25/#28/#29/#30/#31).

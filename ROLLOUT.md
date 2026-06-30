@@ -3,6 +3,11 @@
 > Canonical plan, lives in `gotoplanb/platform` (the cloud IaC repo). Watch is the
 > first project; the same Terragrunt estate will host the other gotoplanb projects.
 > Tracking: the AWS rollout epic + sequenced issues in this repo's Issues.
+>
+> **Status (v0.1.0): live.** The slice below is applied and verified end-to-end on
+> `watch.davestanton.com` / `status.davestanton.com`. The operational landmines hit along
+> the way are written up in [`GOTCHAS.md`](GOTCHAS.md). The "apply deferred" decision below
+> is historical — it described the build-sandbox phase before real credentials.
 
 Getting Watch running on AWS the way the ADRs specify: ECS Fargate behind an ALB,
 **CodeDeploy blue/green**, AppConfig **feature flags**, Step Functions **escalation**,
