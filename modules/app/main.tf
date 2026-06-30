@@ -7,7 +7,7 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  image = var.image_uri != "" ? var.image_uri : "${aws_ecr_repository.app.repository_url}:bootstrap"
+  image = var.image_uri != "" ? var.image_uri : "${var.image_repository_url}:bootstrap"
 
   # ha → private subnets, no public IP (egress via NAT); lean → public subnets + public IP.
   service_subnets  = var.private_networking ? var.private_subnet_ids : var.public_subnet_ids
@@ -97,35 +97,8 @@ locals {
   ]
 }
 
-resource "aws_ecr_repository" "app" {
-  name                 = var.name
-  image_tag_mutability = "MUTABLE"
-  force_delete         = true # ephemeral test loop; real prod would keep images
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = merge(var.tags, { Name = var.name })
-}
-
-# Keep ECR tidy: expire untagged images.
-resource "aws_ecr_lifecycle_policy" "app" {
-  repository = aws_ecr_repository.app.name
-  policy = jsonencode({
-    rules = [{
-      rulePriority = 1
-      description  = "Expire untagged images after 7 days"
-      selection = {
-        tagStatus   = "untagged"
-        countType   = "sinceImagePushed"
-        countUnit   = "days"
-        countNumber = 7
-      }
-      action = { type = "expire" }
-    }]
-  })
-}
+# ECR is now the shared region-level repo (platform#20); both envs pull the same digest.
+# The app stack consumes it via var.image_repository_url (was a per-env repo created here).
 
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${var.name}"

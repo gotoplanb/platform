@@ -1,6 +1,6 @@
 output "ecr_repository_url" {
-  description = "Push the app image here (the pipeline #10 builds + pushes)."
-  value       = aws_ecr_repository.app.repository_url
+  description = "Shared ECR repo the task def pulls from (passed in; platform#20)."
+  value       = var.image_repository_url
 }
 
 output "alb_dns_name" {

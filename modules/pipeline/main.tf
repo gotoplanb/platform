@@ -1,14 +1,19 @@
-# Pipeline stack (platform#10) — the authoritative CD path (ADR-004): CodeConnections
-# source -> CodeBuild (gates + image) -> CodeDeploy ECS blue/green. This file holds the
-# artifact bucket, the GitHub connection, and the deploy-hook Lambda.
+# Pipeline stack (platform#20, ADR-017) — build once, promote by digest. CodeConnections
+# source -> one CodeBuild (gates + image to the shared ECR, pinned by digest) -> CodeDeploy
+# to STAGING -> manual approval -> CodeDeploy to PROD, same digest. No CodeBuild in the prod
+# path. This file: artifact bucket, GitHub connection, and a per-env migration hook Lambda.
 
 data "aws_caller_identity" "current" {}
+
+locals {
+  envs = { staging = var.staging, prod = var.prod }
+}
 
 # ---- Artifact bucket --------------------------------------------------------
 
 resource "aws_s3_bucket" "artifacts" {
   bucket        = "${var.name}-pipeline-${data.aws_caller_identity.current.account_id}"
-  force_destroy = true # ephemeral test loop (ADR-015): teardown shouldn't block on objects
+  force_destroy = true
   tags          = merge(var.tags, { Name = "${var.name}-pipeline" })
 }
 
@@ -29,9 +34,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "artifacts" {
   }
 }
 
-# ---- GitHub source connection ----------------------------------------------
-# Created PENDING; complete the one-time OAuth handshake in the console (or `aws
-# codestar-connections` / CodeConnections) before the first pipeline run.
+# ---- GitHub source connection (PENDING until the one-time handshake) ---------
 
 resource "aws_codestarconnections_connection" "github" {
   name          = substr("${var.name}-gh", 0, 32)
@@ -39,7 +42,8 @@ resource "aws_codestarconnections_connection" "github" {
   tags          = var.tags
 }
 
-# ---- Deploy-hook Lambda (BeforeAllowTraffic / AfterAllowTraffic) ------------
+# ---- Per-env migration hook Lambda (BeforeAllowTraffic) ----------------------
+# Runs `manage.py migrate` on that env's green task def before its traffic shifts (#12).
 
 data "archive_file" "hook" {
   type        = "zip"
@@ -58,65 +62,57 @@ data "aws_iam_policy_document" "hook_assume" {
 }
 
 resource "aws_iam_role" "hook" {
-  name               = "${var.name}-deploy-hook"
+  for_each           = local.envs
+  name               = "${var.name}-${each.key}-deploy-hook"
   assume_role_policy = data.aws_iam_policy_document.hook_assume.json
   tags               = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "hook_basic" {
-  role       = aws_iam_role.hook.name
+  for_each   = local.envs
+  role       = aws_iam_role.hook[each.key].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Report hook status to CodeDeploy + run the migration task (expand phase) on the green
-# task def, passing the app roles to it.
 resource "aws_iam_role_policy" "hook" {
-  name = "${var.name}-deploy-hook"
-  role = aws_iam_role.hook.id
+  for_each = local.envs
+  name     = "${var.name}-${each.key}-deploy-hook"
+  role     = aws_iam_role.hook[each.key].id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      { Effect = "Allow", Action = ["codedeploy:PutLifecycleEventHookExecutionStatus"], Resource = "*" },
+      { Effect = "Allow", Action = ["ecs:RunTask", "ecs:DescribeTasks", "ecs:DescribeTaskDefinition"], Resource = "*" },
       {
-        Effect   = "Allow"
-        Action   = ["codedeploy:PutLifecycleEventHookExecutionStatus"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["ecs:RunTask", "ecs:DescribeTasks", "ecs:DescribeTaskDefinition"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
-        Resource = [var.execution_role_arn, var.task_role_arn]
-        Condition = {
-          StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" }
-        }
+        Effect    = "Allow"
+        Action    = ["iam:PassRole"]
+        Resource  = [each.value.execution_role_arn, each.value.task_role_arn]
+        Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
     ]
   })
 }
 
 resource "aws_lambda_function" "hook" {
-  function_name = "${var.name}-deploy-hook"
-  role          = aws_iam_role.hook.arn
+  for_each      = local.envs
+  function_name = "${var.name}-${each.key}-deploy-hook"
+  role          = aws_iam_role.hook[each.key].arn
   runtime       = "python3.12"
   handler       = "handler.handler"
-  timeout       = 600 # migrate task: pull + run, well under the CodeDeploy hook window
+  timeout       = 600
 
   filename         = data.archive_file.hook.output_path
   source_code_hash = data.archive_file.hook.output_base64sha256
 
   environment {
     variables = {
-      CLUSTER         = var.ecs_cluster_name
-      TASK_FAMILY     = var.ecs_task_family
+      CLUSTER         = each.value.cluster_name
+      TASK_FAMILY     = each.value.task_family
       CONTAINER_NAME  = var.container_name
-      SUBNETS         = join(",", var.private_subnet_ids)
-      SECURITY_GROUPS = var.app_sg_id
+      SUBNETS         = join(",", each.value.private_subnet_ids)
+      SECURITY_GROUPS = each.value.app_sg_id
     }
   }
 
-  tags = merge(var.tags, { Name = "${var.name}-deploy-hook" })
+  tags = merge(var.tags, { Name = "${var.name}-${each.key}-deploy-hook" })
 }
