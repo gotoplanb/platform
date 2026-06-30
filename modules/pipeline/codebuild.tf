@@ -59,6 +59,12 @@ resource "aws_iam_role_policy" "build" {
         Action   = ["ecs:DescribeTaskDefinition"]
         Resource = "*"
       },
+      {
+        # Update the Django Lambdas (escalation + intake consumer) with the built package.
+        Effect   = "Allow"
+        Action   = ["lambda:UpdateFunctionCode", "lambda:GetFunction", "lambda:PublishVersion"]
+        Resource = "arn:aws:lambda:${var.region}:${data.aws_caller_identity.current.account_id}:function:${var.name}-*"
+      },
     ]
   })
 }
@@ -102,6 +108,14 @@ resource "aws_codebuild_project" "this" {
     environment_variable {
       name  = "DEPLOY_HOOK_FUNCTION"
       value = aws_lambda_function.hook.function_name
+    }
+    environment_variable {
+      name  = "NAME_PREFIX"
+      value = var.name
+    }
+    environment_variable {
+      name  = "ARTIFACT_BUCKET"
+      value = aws_s3_bucket.artifacts.bucket
     }
   }
 
