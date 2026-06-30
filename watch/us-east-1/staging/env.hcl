@@ -6,11 +6,11 @@ locals {
   region    = "us-east-1"
   ephemeral = true # spun up on demand, torn down after
 
-  # NAT on so the escalation/intake Lambdas + the migrate hook (private subnets) can reach
-  # Secrets Manager — required for the promote-by-digest pipeline's staging deploy (#20).
-  # Single-AZ RDS keeps staging fast/cheap to recreate.
+  # Staging mirrors prod's topology (ha) for build/scan/deploy/migrate fidelity (ADR-019).
+  # Cost is controlled by ephemerality (destroy / scale-to-0 between ~weekly releases), not
+  # by a leaner shape. Smaller, not leaner: single-AZ RDS + fewer/smaller tasks, same topology.
   cost_profile       = "ha"
   private_networking = true
   enable_nat         = true
-  multi_az           = false
+  multi_az           = false # disposable env — single-AZ is fine
 }
