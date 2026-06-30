@@ -109,8 +109,13 @@ variable "secrets_read_policy_arn" {
 
 # ---- Service shape ----------------------------------------------------------
 
+variable "image_repository_url" {
+  description = "Shared ECR repository URL (platform#20). The task def's image lives here."
+  type        = string
+}
+
 variable "image_uri" {
-  description = "Full image URI. Empty => the ECR repo's :bootstrap tag (replaced by the pipeline #10)."
+  description = "Full image URI. Empty => the shared repo's :bootstrap tag (replaced by the pipeline)."
   type        = string
   default     = ""
 }

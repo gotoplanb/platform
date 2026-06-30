@@ -9,6 +9,12 @@ locals {
   env = read_terragrunt_config(find_in_parent_folders("env.hcl")).locals
 }
 
+dependency "ecr" {
+  config_path                             = "../../ecr"
+  mock_outputs                            = { repository_url = "000000000000.dkr.ecr.us-east-1.amazonaws.com/watch" }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 dependency "network" {
   config_path = "../network"
   mock_outputs = {
@@ -58,7 +64,8 @@ inputs = {
   env    = local.env.env
   region = local.env.region
 
-  private_networking = local.env.private_networking
+  private_networking   = local.env.private_networking
+  image_repository_url = dependency.ecr.outputs.repository_url
 
   vpc_id             = dependency.network.outputs.vpc_id
   public_subnet_ids  = dependency.network.outputs.public_subnet_ids

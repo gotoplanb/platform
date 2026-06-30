@@ -1,5 +1,6 @@
-# CodePipeline: GitHub (CodeConnections) -> CodeBuild (gates + image) -> CodeDeploy ECS
-# blue/green. Source auth is the CodeConnections handshake (one-time, manual).
+# Source -> Build (once) -> DeployStaging -> manual approval -> DeployProd. Both deploy
+# actions consume the SAME build artifact (per-env taskdef pinned to one image digest);
+# there is NO CodeBuild in the prod path (ADR-017).
 
 data "aws_iam_policy_document" "pipeline_assume" {
   statement {
@@ -23,46 +24,24 @@ resource "aws_iam_role_policy" "pipeline" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:GetBucketLocation"]
-        Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["codestar-connections:UseConnection"]
-        Resource = aws_codestarconnections_connection.github.arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"]
-        Resource = aws_codebuild_project.this.arn
-      },
+      { Effect = "Allow", Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:GetBucketLocation"], Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"] },
+      { Effect = "Allow", Action = ["codestar-connections:UseConnection"], Resource = aws_codestarconnections_connection.github.arn },
+      { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = aws_codebuild_project.this.arn },
       {
         Effect = "Allow"
         Action = [
-          "codedeploy:CreateDeployment", "codedeploy:GetDeployment",
-          "codedeploy:GetDeploymentConfig", "codedeploy:RegisterApplicationRevision",
-          "codedeploy:GetApplicationRevision",
+          "codedeploy:CreateDeployment", "codedeploy:GetDeployment", "codedeploy:GetDeploymentConfig",
+          "codedeploy:RegisterApplicationRevision", "codedeploy:GetApplicationRevision",
           "codedeploy:GetApplication", "codedeploy:GetDeploymentGroup",
         ]
         Resource = "*"
       },
+      { Effect = "Allow", Action = ["ecs:RegisterTaskDefinition", "ecs:DescribeServices", "ecs:DescribeTaskDefinition"], Resource = "*" },
       {
-        # CodeDeployToECS registers the new task def and passes the app roles.
-        Effect   = "Allow"
-        Action   = ["ecs:RegisterTaskDefinition", "ecs:DescribeServices", "ecs:DescribeTaskDefinition"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
-        Resource = [var.execution_role_arn, var.task_role_arn]
-        Condition = {
-          StringEquals = {
-            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
-          }
-        }
+        Effect    = "Allow"
+        Action    = ["iam:PassRole"]
+        Resource  = [var.staging.execution_role_arn, var.staging.task_role_arn, var.prod.execution_role_arn, var.prod.task_role_arn]
+        Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
     ]
   })
@@ -104,28 +83,60 @@ resource "aws_codepipeline" "this" {
       version          = "1"
       input_artifacts  = ["source"]
       output_artifacts = ["build"]
-      configuration = {
-        ProjectName = aws_codebuild_project.this.name
-      }
+      configuration    = { ProjectName = aws_codebuild_project.this.name }
     }
   }
 
   stage {
-    name = "Deploy"
+    name = "DeployStaging"
     action {
-      name            = "Deploy"
+      name            = "DeployStaging"
       category        = "Deploy"
       owner           = "AWS"
       provider        = "CodeDeployToECS"
       version         = "1"
       input_artifacts = ["build"]
       configuration = {
-        ApplicationName                = aws_codedeploy_app.this.name
-        DeploymentGroupName            = aws_codedeploy_deployment_group.this.deployment_group_name
+        ApplicationName                = aws_codedeploy_app.this["staging"].name
+        DeploymentGroupName            = aws_codedeploy_deployment_group.this["staging"].deployment_group_name
         TaskDefinitionTemplateArtifact = "build"
-        TaskDefinitionTemplatePath     = "taskdef.json"
+        TaskDefinitionTemplatePath     = "taskdef-staging.json"
         AppSpecTemplateArtifact        = "build"
-        AppSpecTemplatePath            = "appspec.yaml"
+        AppSpecTemplatePath            = "appspec-staging.yaml"
+      }
+    }
+  }
+
+  stage {
+    name = "ApproveProd"
+    action {
+      name     = "ApproveProd"
+      category = "Approval"
+      owner    = "AWS"
+      provider = "Manual"
+      version  = "1"
+      configuration = {
+        CustomData = "Promote the staging-verified digest to prod?"
+      }
+    }
+  }
+
+  stage {
+    name = "DeployProd"
+    action {
+      name            = "DeployProd"
+      category        = "Deploy"
+      owner           = "AWS"
+      provider        = "CodeDeployToECS"
+      version         = "1"
+      input_artifacts = ["build"]
+      configuration = {
+        ApplicationName                = aws_codedeploy_app.this["prod"].name
+        DeploymentGroupName            = aws_codedeploy_deployment_group.this["prod"].deployment_group_name
+        TaskDefinitionTemplateArtifact = "build"
+        TaskDefinitionTemplatePath     = "taskdef-prod.json"
+        AppSpecTemplateArtifact        = "build"
+        AppSpecTemplatePath            = "appspec-prod.yaml"
       }
     }
   }
