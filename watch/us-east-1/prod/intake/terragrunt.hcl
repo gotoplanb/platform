@@ -1,0 +1,70 @@
+# Intake stack for watch / prod / us-east-1 (platform#8). API Gateway -> SQS (durable,
+# ADR-002) + DLQ + a shared-secret authorizer + a VPC consumer Lambda that creates the
+# incident and starts the escalation execution. Consumer needs NAT (Secrets Manager) — prod
+# is ha. The state-machine ARN is predicted from the name (#7), no cycle.
+
+include "root" {
+  path = find_in_parent_folders("terragrunt.hcl")
+}
+
+locals {
+  env = read_terragrunt_config(find_in_parent_folders("env.hcl")).locals
+}
+
+dependency "network" {
+  config_path = "../network"
+  mock_outputs = {
+    private_subnet_ids = ["subnet-pa", "subnet-pb"]
+    app_sg_id          = "sg-app"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
+dependency "data" {
+  config_path = "../data"
+  mock_outputs = {
+    db_address        = "mock.rds.amazonaws.com"
+    db_port           = 5432
+    db_name           = "watch"
+    db_username       = "watch"
+    master_secret_arn = "arn:aws:secretsmanager:us-east-1:000000000000:secret:mock"
+    kms_key_arn       = "arn:aws:kms:us-east-1:000000000000:key/mock"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
+dependency "config" {
+  config_path = "../config"
+  mock_outputs = {
+    django_secret_key_param_arn      = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-django"
+    intake_webhook_secret_param_name = "/watch/prod/intake-webhook-secret"
+    intake_webhook_secret_param_arn  = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-webhook"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
+terraform {
+  source = "${get_repo_root()}//modules/intake"
+}
+
+inputs = {
+  name   = "${local.env.project}-${local.env.env}"
+  env    = local.env.env
+  region = local.env.region
+
+  private_subnet_ids = dependency.network.outputs.private_subnet_ids
+  app_sg_id          = dependency.network.outputs.app_sg_id
+
+  db_address           = dependency.data.outputs.db_address
+  db_port              = dependency.data.outputs.db_port
+  db_name              = dependency.data.outputs.db_name
+  db_username          = dependency.data.outputs.db_username
+  db_master_secret_arn = dependency.data.outputs.master_secret_arn
+  db_kms_key_arn       = dependency.data.outputs.kms_key_arn
+
+  django_secret_key_param_arn = dependency.config.outputs.django_secret_key_param_arn
+  webhook_secret_param_name   = dependency.config.outputs.intake_webhook_secret_param_name
+  webhook_secret_param_arn    = dependency.config.outputs.intake_webhook_secret_param_arn
+
+  tags = { env = local.env.env }
+}

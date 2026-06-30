@@ -30,3 +30,5 @@ tofu.log
 
 # Generated Lambda placeholder package
 modules/**/handler.zip
+
+modules/**/*.zip
