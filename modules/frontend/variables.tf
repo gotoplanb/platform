@@ -35,6 +35,12 @@ variable "acm_certificate_arn" {
   default = ""
 }
 
+variable "cert_domain" {
+  description = "If set, look up the ISSUED ACM cert by this domain (us-east-1) for the aliases — avoids a dependency cycle with the DNS stack (#13)."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

@@ -5,8 +5,17 @@
 # The build -> `aws s3 sync` -> CloudFront invalidation runs in the deploy step; #13 adds
 # the custom domain + ACM cert (aliases/acm_certificate_arn).
 
+# Find the cert by domain (the DNS stack #13 created + validated it) — no dependency cycle.
+data "aws_acm_certificate" "this" {
+  count       = var.cert_domain != "" ? 1 : 0
+  domain      = var.cert_domain
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
 locals {
-  use_custom_domain = length(var.aliases) > 0 && var.acm_certificate_arn != ""
+  cert_arn          = var.cert_domain != "" ? data.aws_acm_certificate.this[0].arn : var.acm_certificate_arn
+  use_custom_domain = length(var.aliases) > 0 && local.cert_arn != ""
   has_api           = var.api_origin_domain != ""
 }
 
@@ -140,7 +149,7 @@ resource "aws_cloudfront_distribution" "site" {
   dynamic "viewer_certificate" {
     for_each = local.use_custom_domain ? [1] : []
     content {
-      acm_certificate_arn      = var.acm_certificate_arn
+      acm_certificate_arn      = local.cert_arn
       ssl_support_method       = "sni-only"
       minimum_protocol_version = "TLSv1.2_2021"
     }

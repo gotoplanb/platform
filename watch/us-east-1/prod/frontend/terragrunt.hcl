@@ -26,5 +26,10 @@ inputs = {
   env  = local.env.env
   # Proxy /api/* to the ALB so the HTTPS status page is same-origin (no mixed-content/CORS).
   api_origin_domain = dependency.app.outputs.alb_dns_name
-  tags              = { env = local.env.env }
+
+  # Custom domain + HTTPS (#13): status.davestanton.com on the cert (SAN of watch.davestanton.com).
+  aliases     = ["status.davestanton.com"]
+  cert_domain = "watch.davestanton.com"
+
+  tags = { env = local.env.env }
 }
