@@ -28,6 +28,20 @@ dependency "app" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+# Deploy-gate alarms must exist before CodeDeploy creates the deployment group, so depend
+# on the stacks that own them (#7 escalation, #11 observability) for both ordering + names.
+dependency "escalation" {
+  config_path                             = "../escalation"
+  mock_outputs                            = { executions_failed_alarm_name = "watch-prod-escalation-failed" }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
+dependency "observability" {
+  config_path                             = "../observability"
+  mock_outputs                            = { alarm_names = ["watch-prod-alb-5xx", "watch-prod-target-5xx"] }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 terraform {
   source = "${get_repo_root()}//modules/pipeline"
 }
@@ -53,13 +67,12 @@ inputs = {
   execution_role_arn = dependency.app.outputs.execution_role_arn
   task_role_arn      = dependency.app.outputs.task_role_arn
 
-  # Auto-rollback if escalation (#7) or ALB 5xx (#11) trip during/after a deploy. Names are
-  # deterministic; the alarms exist once #7/#11 are applied (CodeDeploy validates at deploy).
-  rollback_alarm_names = [
-    "${local.name}-escalation-failed",
-    "${local.name}-alb-5xx",
-    "${local.name}-target-5xx",
-  ]
+  # Auto-rollback on escalation (#7) or ALB 5xx (#11). Sourced from those stacks' outputs so
+  # the deployment group is created only after the alarms exist (CodeDeploy validates them).
+  rollback_alarm_names = concat(
+    [dependency.escalation.outputs.executions_failed_alarm_name],
+    dependency.observability.outputs.alarm_names,
+  )
 
   tags = { env = local.env.env }
 }

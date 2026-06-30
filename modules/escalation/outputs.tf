@@ -23,3 +23,8 @@ output "executions_failed_alarm_arn" {
   description = "Alarm to attach an SNS action to in #11."
   value       = aws_cloudwatch_metric_alarm.executions_failed.arn
 }
+
+output "executions_failed_alarm_name" {
+  description = "Alarm name for the deploy gate (#10)."
+  value       = aws_cloudwatch_metric_alarm.executions_failed.alarm_name
+}
