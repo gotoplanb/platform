@@ -89,7 +89,7 @@ inputs = {
   appconfig_read_policy_arn       = dependency.config.outputs.appconfig_read_policy_arn
   secrets_read_policy_arn         = dependency.config.outputs.secrets_read_policy_arn
 
-  desired_count = 0
-  autoscale_min = 0
+  desired_count = 1
+  autoscale_min = 1
   autoscale_max = 4
 }
