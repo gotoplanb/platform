@@ -53,8 +53,13 @@ inputs = {
   execution_role_arn = dependency.app.outputs.execution_role_arn
   task_role_arn      = dependency.app.outputs.task_role_arn
 
-  # Auto-rollback if escalation starts failing during/after a deploy (#7).
-  rollback_alarm_names = ["${local.name}-escalation-failed"]
+  # Auto-rollback if escalation (#7) or ALB 5xx (#11) trip during/after a deploy. Names are
+  # deterministic; the alarms exist once #7/#11 are applied (CodeDeploy validates at deploy).
+  rollback_alarm_names = [
+    "${local.name}-escalation-failed",
+    "${local.name}-alb-5xx",
+    "${local.name}-target-5xx",
+  ]
 
   tags = { env = local.env.env }
 }
