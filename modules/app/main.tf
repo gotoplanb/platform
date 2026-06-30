@@ -22,7 +22,7 @@ locals {
   escalation_state_machine_arn = "arn:aws:states:${var.region}:${data.aws_caller_identity.current.account_id}:stateMachine:${var.name}"
 
   # Non-secret container env (the app reads these; secrets come via the `secrets` block).
-  app_environment = [
+  app_environment = concat([
     { name = "POSTGRES_HOST", value = var.db_address },
     { name = "POSTGRES_PORT", value = tostring(var.db_port) },
     { name = "POSTGRES_DB", value = var.db_name },
@@ -41,7 +41,12 @@ locals {
     { name = "OTEL_ENABLED", value = local.otel_enabled ? "1" : "0" },
     { name = "OTEL_SERVICE_NAME", value = "watch-backend" },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.otel_exporter_endpoint },
-  ]
+    ], var.app_hostname != "" ? [
+    # HTTPS (#13): trust the public origin for CSRF + secure cookies behind the ALB.
+    { name = "CSRF_TRUSTED_ORIGINS", value = "https://${var.app_hostname}" },
+    { name = "SESSION_COOKIE_SECURE", value = "1" },
+    { name = "CSRF_COOKIE_SECURE", value = "1" },
+  ] : [])
 
   # Secrets resolved at launch by the execution role (SSM SecureStrings + the RDS-managed
   # Secrets Manager credential). Values never appear in the task def or logs.

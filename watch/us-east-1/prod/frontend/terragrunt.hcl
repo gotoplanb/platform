@@ -24,8 +24,9 @@ terraform {
 inputs = {
   name = "${local.env.project}-${local.env.env}"
   env  = local.env.env
-  # Proxy /api/* to the ALB so the HTTPS status page is same-origin (no mixed-content/CORS).
-  api_origin_domain = dependency.app.outputs.alb_dns_name
+  # /api proxy retired (#13): the status page fetches the API directly from its own HTTPS
+  # domain (watch.davestanton.com, CORS). No ALB origin / /api behavior on CloudFront.
+  api_origin_domain = ""
 
   # Custom domain + HTTPS (#13): status.davestanton.com on the cert (SAN of watch.davestanton.com).
   aliases     = ["status.davestanton.com"]
