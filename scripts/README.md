@@ -10,9 +10,15 @@ before running (each has a header comment).
 
 ## Nightly / between-release teardown (ADR-019: staging is ephemeral)
 ```sh
-scripts/teardown.sh both -y      # destroy prod + staging + pipeline, keep foundation
-scripts/sweep.sh                 # confirm clean; nonzero exit = something lingers
+scripts/teardown.sh both --parallel -y   # pipeline first, then staging & prod concurrently
+scripts/sweep.sh                          # confirm clean; nonzero exit = something lingers
 ```
+`--parallel` tears the two envs down at the same time (roughly halves wall-clock — both are
+dominated by the same independent slow waits: ENI detachment, CloudFront disable+delete, RDS
+deletion). It's safe: staging and prod are disjoint with separate TF state, and the only
+shared stack — `pipeline` — is destroyed first, before the fan-out. Each env streams to its
+own log (path printed at start) so output stays readable; within an env stacks stay
+sequential (dependents-first). Drop `--parallel` for a single interleaved log.
 Recreate next session from IaC (`terragrunt run --all apply` per env) — the kept ECR image
 and ACM cert make it fast (no rebuild, no cert revalidation).
 

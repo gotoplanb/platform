@@ -9,11 +9,16 @@
 #         account/* (budget, github-oidc), github/* (repo config).
 #
 # Usage:
-#   scripts/teardown.sh                  # both envs + pipeline (default)
+#   scripts/teardown.sh                  # both envs + pipeline (default), sequential
+#   scripts/teardown.sh both --parallel  # pipeline first, then staging & prod concurrently
 #   scripts/teardown.sh staging          # staging only (leaves prod + pipeline up)
 #   scripts/teardown.sh prod             # prod only
-#   scripts/teardown.sh both --with-dns  # also destroy prod/dns (cert + records)
+#   scripts/teardown.sh both --with-dns  # also destroy prod/dns (cert + Cloudflare records)
 #   scripts/teardown.sh both -y          # skip the confirm prompt (automation)
+#
+# Cross-env parallelism is safe: staging and prod are disjoint (separate VPCs/RDS/ALB/CF
+# and separate TF state keys), and the only shared stack — pipeline — is destroyed first,
+# before the env fan-out. Within an env, stacks always go sequentially (dependents-first).
 #
 # Env: AWS_PROFILE (default watch-bootstrap — needs write), AWS_REGION (default us-east-1),
 #      TG_TF_PATH (default tofu). Continue-on-error; prints a summary; exits nonzero if any
@@ -31,11 +36,12 @@ BASE="watch/$REGION"
 ENV_STACKS=(observability frontend intake escalation app config data network)
 
 WHICH="${1:-both}"; [ $# -gt 0 ] && shift
-WITH_DNS=0; ASSUME_YES=0
+WITH_DNS=0; ASSUME_YES=0; PARALLEL=0
 for a in "$@"; do
   case "$a" in
-    --with-dns) WITH_DNS=1 ;;
-    -y|--yes)   ASSUME_YES=1 ;;
+    --with-dns)  WITH_DNS=1 ;;
+    --parallel)  PARALLEL=1 ;;
+    -y|--yes)    ASSUME_YES=1 ;;
     *) echo "unknown flag: $a" >&2; exit 2 ;;
   esac
 done
@@ -44,25 +50,42 @@ case "$WHICH" in
   staging) ENVS=(staging); DO_PIPELINE=0 ;;
   prod)    ENVS=(prod);    DO_PIPELINE=0 ;;
   both)    ENVS=(staging prod); DO_PIPELINE=1 ;;
-  *) echo "usage: teardown.sh [staging|prod|both] [--with-dns] [-y]" >&2; exit 2 ;;
+  *) echo "usage: teardown.sh [staging|prod|both] [--parallel] [--with-dns] [-y]" >&2; exit 2 ;;
 esac
 
-# Build the ordered destroy list.
-TARGETS=()
-[ "$DO_PIPELINE" = 1 ] && TARGETS+=("$BASE/pipeline")   # shared; references both envs
-for e in "${ENVS[@]}"; do
-  for s in "${ENV_STACKS[@]}"; do TARGETS+=("$BASE/$e/$s"); done
-done
-# prod/dns is a leaf (app/frontend reach the cert via a data source, not a dependency),
-# so it's safe to destroy last — only when explicitly asked.
-if [ "$WITH_DNS" = 1 ]; then
-  for e in "${ENVS[@]}"; do [ "$e" = prod ] && TARGETS+=("$BASE/prod/dns"); done
-fi
+RESDIR="$(mktemp -d "${TMPDIR:-/tmp}/watch-teardown.XXXXXX")"
+RESULTS="$RESDIR/results"; : > "$RESULTS"
+
+# stacks_for_env <env> -> prints destroy-ordered dirs (dns appended only for prod+--with-dns)
+stacks_for_env() {
+  local e="$1" s
+  for s in "${ENV_STACKS[@]}"; do echo "$BASE/$e/$s"; done
+  { [ "$WITH_DNS" = 1 ] && [ "$e" = prod ]; } && echo "$BASE/prod/dns"
+}
+
+# destroy_one <dir> — single stack; records OK/FAIL/SKIP (one $RESULTS line, append is atomic)
+destroy_one() {
+  local dir="$1"
+  echo "==================== DESTROY $dir ===================="
+  if [ ! -f "$dir/terragrunt.hcl" ]; then echo "SKIP   $dir (no stack)" >> "$RESULTS"; return; fi
+  if ( cd "$dir" && terragrunt destroy -auto-approve --non-interactive ); then
+    echo "OK     $dir" >> "$RESULTS"
+  else
+    echo "FAIL   $dir" >> "$RESULTS"
+  fi
+}
+
+# destroy_env <env> — that env's stacks, strictly sequential (dependents-first)
+destroy_env() {
+  local e="$1" d
+  while read -r d; do destroy_one "$d"; done < <(stacks_for_env "$e")
+}
 
 echo "Profile : $AWS_PROFILE"
 aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null || { echo "no AWS creds for $AWS_PROFILE" >&2; exit 1; }
 echo "Region  : $REGION"
-echo "Will destroy, in order:"; printf '  %s\n' "${TARGETS[@]}"
+echo "Envs    : ${ENVS[*]}$([ "$DO_PIPELINE" = 1 ] && echo ' (+ pipeline first)')"
+echo "Mode    : $([ "$PARALLEL" = 1 ] && [ "${#ENVS[@]}" -gt 1 ] && echo 'parallel (per-env)' || echo sequential)"
 echo "Kept    : state backend, ecr, account/*, github/*$([ "$WITH_DNS" = 1 ] && echo '' || echo ', prod/dns')"
 
 if [ "$ASSUME_YES" != 1 ]; then
@@ -70,18 +93,27 @@ if [ "$ASSUME_YES" != 1 ]; then
   [[ "$ans" =~ ^[Yy]$ ]] || { echo "aborted"; exit 1; }
 fi
 
-declare -a RESULTS=()
-for dir in "${TARGETS[@]}"; do
-  echo "==================== DESTROY $dir ===================="
-  if [ ! -f "$dir/terragrunt.hcl" ]; then RESULTS+=("SKIP   $dir (no stack)"); continue; fi
-  if ( cd "$dir" && terragrunt destroy -auto-approve --non-interactive ); then
-    RESULTS+=("OK     $dir")
-  else
-    RESULTS+=("FAIL   $dir")
-  fi
-done
+# pipeline is shared and references both envs — always destroy it first, synchronously.
+[ "$DO_PIPELINE" = 1 ] && destroy_one "$BASE/pipeline"
+
+if [ "$PARALLEL" = 1 ] && [ "${#ENVS[@]}" -gt 1 ]; then
+  pids=()
+  for e in "${ENVS[@]}"; do
+    destroy_env "$e" > "$RESDIR/$e.log" 2>&1 &
+    pids+=("$!")
+    echo "  $e teardown running in background -> $RESDIR/$e.log (pid $!)"
+  done
+  echo "  (tail -f the logs above to watch; waiting for both to finish...)"
+  fail=0; for p in "${pids[@]}"; do wait "$p" || fail=1; done
+else
+  for e in "${ENVS[@]}"; do destroy_env "$e"; done
+fi
 
 echo "==================== SUMMARY ===================="
-printf '%s\n' "${RESULTS[@]}"
-printf '%s\n' "${RESULTS[@]}" | grep -q '^FAIL' && { echo "one or more stacks failed — re-run or inspect"; exit 1; }
+sort "$RESULTS"
+echo "logs: $RESDIR"
+if grep -q '^FAIL' "$RESULTS"; then
+  echo "one or more stacks failed — re-run or inspect the logs above"
+  exit 1
+fi
 echo "teardown complete. Run scripts/sweep.sh to confirm no billable orphans remain."
