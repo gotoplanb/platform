@@ -63,6 +63,17 @@ variable "task_role_arn" {
   type        = string
 }
 
+# ---- Migration hook placement (network #3) ----------------------------------
+# The BeforeAllowTraffic hook runs `migrate` as a Fargate task in the app's subnets/SG.
+
+variable "private_subnet_ids" {
+  type = list(string)
+}
+
+variable "app_sg_id" {
+  type = string
+}
+
 # ---- Blue/green wiring (app stack #6) ---------------------------------------
 
 variable "production_listener_arn" {

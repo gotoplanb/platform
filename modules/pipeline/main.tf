@@ -68,17 +68,33 @@ resource "aws_iam_role_policy_attachment" "hook_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Report hook status back to CodeDeploy (else the deploy stalls).
-resource "aws_iam_role_policy" "hook_codedeploy" {
+# Report hook status to CodeDeploy + run the migration task (expand phase) on the green
+# task def, passing the app roles to it.
+resource "aws_iam_role_policy" "hook" {
   name = "${var.name}-deploy-hook"
   role = aws_iam_role.hook.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["codedeploy:PutLifecycleEventHookExecutionStatus"]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["codedeploy:PutLifecycleEventHookExecutionStatus"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ecs:RunTask", "ecs:DescribeTasks", "ecs:DescribeTaskDefinition"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = [var.execution_role_arn, var.task_role_arn]
+        Condition = {
+          StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" }
+        }
+      },
+    ]
   })
 }
 
@@ -87,10 +103,20 @@ resource "aws_lambda_function" "hook" {
   role          = aws_iam_role.hook.arn
   runtime       = "python3.12"
   handler       = "handler.handler"
-  timeout       = 120
+  timeout       = 600 # migrate task: pull + run, well under the CodeDeploy hook window
 
   filename         = data.archive_file.hook.output_path
   source_code_hash = data.archive_file.hook.output_base64sha256
+
+  environment {
+    variables = {
+      CLUSTER         = var.ecs_cluster_name
+      TASK_FAMILY     = var.ecs_task_family
+      CONTAINER_NAME  = var.container_name
+      SUBNETS         = join(",", var.private_subnet_ids)
+      SECURITY_GROUPS = var.app_sg_id
+    }
+  }
 
   tags = merge(var.tags, { Name = "${var.name}-deploy-hook" })
 }

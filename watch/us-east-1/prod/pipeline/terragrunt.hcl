@@ -42,6 +42,12 @@ dependency "observability" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+dependency "network" {
+  config_path                             = "../network"
+  mock_outputs                            = { private_subnet_ids = ["subnet-pa", "subnet-pb"], app_sg_id = "sg-app" }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 terraform {
   source = "${get_repo_root()}//modules/pipeline"
 }
@@ -66,6 +72,10 @@ inputs = {
 
   execution_role_arn = dependency.app.outputs.execution_role_arn
   task_role_arn      = dependency.app.outputs.task_role_arn
+
+  # BeforeAllowTraffic migration task runs in the app's private subnets + SG.
+  private_subnet_ids = dependency.network.outputs.private_subnet_ids
+  app_sg_id          = dependency.network.outputs.app_sg_id
 
   # Auto-rollback on escalation (#7) or ALB 5xx (#11). Sourced from those stacks' outputs so
   # the deployment group is created only after the alarms exist (CodeDeploy validates them).
