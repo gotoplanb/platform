@@ -105,6 +105,10 @@ resource "aws_codebuild_project" "this" {
       name  = "LAMBDA_ENVS"
       value = "${var.staging.task_family} ${var.prod.task_family}" # function name prefixes
     }
+    environment_variable {
+      name  = "ARTIFACT_BUCKET"
+      value = aws_s3_bucket.artifacts.bucket
+    }
   }
 
   source {
