@@ -26,13 +26,13 @@ generate "versions" {
 dependency "app" {
   config_path                             = "../app"
   mock_outputs                            = { alb_dns_name = "watch-prod-mock.us-east-1.elb.amazonaws.com" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "frontend" {
   config_path                             = "../frontend"
   mock_outputs                            = { distribution_domain_name = "dmock.cloudfront.net" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {

@@ -32,6 +32,9 @@ export AWS_PROFILE="${AWS_PROFILE:-watch-bootstrap}"
 REGION="${AWS_REGION:-us-east-1}"
 BASE="watch/$REGION"
 
+# prod/dns's CNAME cleanup (below) drives the cloudflare provider; load its token from .env.
+if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ -f .env ]; then set -a; . ./.env; set +a; fi
+
 # dependents -> dependencies (the order we destroy within an env)
 ENV_STACKS=(observability frontend intake escalation app config data network)
 
@@ -93,8 +96,27 @@ if [ "$ASSUME_YES" != 1 ]; then
   [[ "$ans" =~ ^[Yy]$ ]] || { echo "aborted"; exit 1; }
 fi
 
+# The watch/status CNAMEs point at the ALB/CloudFront we're about to destroy. Remove just
+# those two records (keep the ACM cert + validation records — slow to revalidate) so a later
+# create is clean; otherwise CloudFront refuses to re-claim status.* (CNAMEAlreadyExists).
+destroy_dns_records() {
+  local d="$BASE/prod/dns"
+  [ -f "$d/terragrunt.hcl" ] || return 0
+  echo "==================== DROP prod/dns CNAME records (keep cert) ===================="
+  if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "SKIP   prod/dns records (CLOUDFLARE_API_TOKEN unset)" >> "$RESULTS"; return 0; fi
+  if ( cd "$d" && terragrunt destroy -target=cloudflare_record.app -target=cloudflare_record.status \
+         -auto-approve --non-interactive ); then
+    echo "OK     prod/dns records (watch+status CNAMEs)" >> "$RESULTS"
+  else
+    echo "FAIL   prod/dns records" >> "$RESULTS"
+  fi
+}
+
 # pipeline is shared and references both envs — always destroy it first, synchronously.
 [ "$DO_PIPELINE" = 1 ] && destroy_one "$BASE/pipeline"
+
+# drop the prod CNAMEs before tearing prod down (only when prod is in scope)
+for e in "${ENVS[@]}"; do [ "$e" = prod ] && destroy_dns_records; done
 
 if [ "$PARALLEL" = 1 ] && [ "${#ENVS[@]}" -gt 1 ]; then
   pids=()

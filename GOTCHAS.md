@@ -40,6 +40,17 @@ This file is the "things that cost us an hour" list — read it before the next 
 - **`waitForTaskToken` must set `ResultPath` (`$.decision`)** or the task output replaces
   the whole state and wipes `incidentId` for later tiers (ADR-007).
 
+## Recreate after teardown (keeping the cert)
+- **`CNAMEAlreadyExists` when re-creating the CloudFront status distro.** If teardown keeps
+  `prod/dns` (to avoid slow ACM revalidation) but destroys `frontend`, the Cloudflare
+  `status.davestanton.com` CNAME is left pointing at the now-deleted distribution. CloudFront
+  then refuses to let the *new* distro claim that alias ("incorrectly configured DNS record
+  that points to another CloudFront distribution"). Fix: teardown now target-destroys just
+  the `watch`/`status` CNAMEs (`cloudflare_record.app`/`.status`) while keeping the ACM cert
+  + validation records; `create.sh`'s dns apply recreates them against the new ALB/CloudFront.
+  The dns dependency blocks allow `destroy` in `mock_outputs_allowed_terraform_commands` so
+  the target-destroy runs even when `app`/`frontend` state is already gone.
+
 ## Lambda packaging
 - **250 MB unzipped limit.** `cp -r backend/.` dragged in the fat `.venv` that
   `make coverage` builds → over the limit. Copy only `backend/config` + `backend/incidents`,
