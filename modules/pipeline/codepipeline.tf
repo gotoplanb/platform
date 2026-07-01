@@ -48,8 +48,9 @@ resource "aws_iam_role_policy" "pipeline" {
 }
 
 resource "aws_codepipeline" "this" {
-  name     = var.name
-  role_arn = aws_iam_role.pipeline.arn
+  name          = var.name
+  role_arn      = aws_iam_role.pipeline.arn
+  pipeline_type = "V2" # V2 required for the git push trigger below (#24)
 
   artifact_store {
     location = aws_s3_bucket.artifacts.bucket
@@ -137,6 +138,20 @@ resource "aws_codepipeline" "this" {
         TaskDefinitionTemplatePath     = "taskdef-prod.json"
         AppSpecTemplateArtifact        = "build"
         AppSpecTemplatePath            = "appspec-prod.yaml"
+      }
+    }
+  }
+
+  # Auto-start on a push to the tracked branch via the CodeConnections webhook (#24), so a
+  # merge to main runs build -> DeployStaging -> approval -> DeployProd without a manual start.
+  trigger {
+    provider_type = "CodeStarSourceConnection"
+    git_configuration {
+      source_action_name = "Source"
+      push {
+        branches {
+          includes = [var.github_branch]
+        }
       }
     }
   }

@@ -20,6 +20,8 @@
       "Bash(make create-staging:*)",
       "Bash(make create-prod)",
       "Bash(make create-prod:*)",
+      "Bash(make pipeline)",
+      "Bash(make pipeline:*)",
       "Bash(make up)",
       "Bash(make up:*)",
       "Bash(make recreate)",

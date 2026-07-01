@@ -35,10 +35,11 @@ ASSUME_YES=0
 for a in "$@"; do case "$a" in -y|--yes) ASSUME_YES=1 ;; *) echo "unknown flag: $a" >&2; exit 2 ;; esac; done
 
 case "$WHICH" in
-  staging) DIR="$BASE/staging" ;;
-  prod)    DIR="$BASE/prod" ;;
-  both)    DIR="$BASE" ;;               # ecr + staging + prod + prod/dns + pipeline
-  *) echo "usage: create.sh [staging|prod|both] [-y]" >&2; exit 2 ;;
+  staging)  DIR="$BASE/staging" ;;
+  prod)     DIR="$BASE/prod" ;;
+  both)     DIR="$BASE" ;;               # ecr + staging + prod + prod/dns + pipeline
+  pipeline) DIR="$BASE/pipeline" ;;      # re-apply just the pipeline (repoint at current envs, #28)
+  *) echo "usage: create.sh [staging|prod|both|pipeline] [-y]" >&2; exit 2 ;;
 esac
 
 echo "Profile : $AWS_PROFILE"
@@ -70,11 +71,21 @@ if [ "$ASSUME_YES" != 1 ]; then
   [[ "$ans" =~ ^[Yy]$ ]] || { echo "aborted"; exit 1; }
 fi
 
-echo "==================== APPLY $DIR ===================="
-( cd "$DIR" && terragrunt run --all apply --non-interactive ); rc=$?
+apply_dir() { echo "==================== APPLY $1 ===================="; ( cd "$1" && terragrunt run --all apply --non-interactive ); }
+
+apply_dir "$DIR"; rc=$?
+
+# Recreating staging alone gives it new listener/target-group ARNs; the region pipeline bakes
+# those into its staging CodeDeploy group, so re-apply the pipeline to repoint at the fresh
+# staging (#28). `both` already includes the pipeline; `prod`/`pipeline` scopes don't need it.
+if [ "$rc" -eq 0 ] && [ "$WHICH" = staging ]; then
+  apply_dir "$BASE/pipeline"; rc=$?
+fi
 
 echo "==================== SUMMARY ===================="
 if [ "$rc" -ne 0 ]; then echo "apply failed (rc=$rc) — inspect above; re-run is idempotent"; exit "$rc"; fi
 echo "create complete ($WHICH)."
-[ "$WHICH" != staging ] && echo "prod live: https://watch.davestanton.com  https://status.davestanton.com"
-echo "Next: push code through the pipeline to promote a fresh build (CodeDeploy shifts off :bootstrap)."
+case "$WHICH" in
+  prod|both) echo "prod live: https://watch.davestanton.com  https://status.davestanton.com" ;;
+esac
+echo "Next: push to the tracked branch to auto-run the pipeline (#24), or start it manually."

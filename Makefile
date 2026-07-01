@@ -8,7 +8,7 @@ export AWS_REGION ?= us-east-1
 
 export ENV ?= prod
 
-.PHONY: help create create-staging create-prod up \
+.PHONY: help create create-staging create-prod pipeline up \
         teardown teardown-staging teardown-prod down \
         sweep recreate migrate seed deploy-frontend live
 
@@ -23,6 +23,8 @@ create-staging: ## Create staging only
 	scripts/create.sh staging -y
 create-prod: ## Create prod only
 	scripts/create.sh prod -y
+pipeline: ## Re-apply just the pipeline (repoint at current staging/prod ARNs, #28)
+	scripts/create.sh pipeline -y
 up: create ## Alias: create
 
 ## --- teardown (write: watch-bootstrap) ---
