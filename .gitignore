@@ -32,3 +32,6 @@ tofu.log
 modules/**/handler.zip
 
 modules/**/*.zip
+
+# Claude Code personal (per-user) overrides — keep the checked-in policy authoritative
+.claude/settings.local.json

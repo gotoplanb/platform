@@ -1,0 +1,51 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "Grep",
+      "Glob",
+      "WebFetch",
+      "WebSearch",
+      "mcp__MCP_DOCKER"
+    ],
+    "ask": [
+      "Bash(make live)",
+      "Bash(make live:*)",
+      "Bash(make create)",
+      "Bash(make create:*)",
+      "Bash(make create-staging)",
+      "Bash(make create-staging:*)",
+      "Bash(make create-prod)",
+      "Bash(make create-prod:*)",
+      "Bash(make up)",
+      "Bash(make up:*)",
+      "Bash(make recreate)",
+      "Bash(make recreate:*)",
+      "Bash(make teardown)",
+      "Bash(make teardown:*)",
+      "Bash(make teardown-staging)",
+      "Bash(make teardown-staging:*)",
+      "Bash(make teardown-prod)",
+      "Bash(make teardown-prod:*)",
+      "Bash(make down)",
+      "Bash(make down:*)",
+      "Bash(scripts/create.sh:*)",
+      "Bash(scripts/teardown.sh:*)",
+      "Bash(terragrunt apply:*)",
+      "Bash(terragrunt destroy:*)",
+      "Bash(terragrunt run --all apply:*)",
+      "Bash(terragrunt run --all destroy:*)",
+      "Bash(tofu apply:*)",
+      "Bash(tofu destroy:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)"
+    ]
+  }
+}
