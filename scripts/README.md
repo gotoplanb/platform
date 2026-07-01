@@ -1,12 +1,26 @@
 # scripts/
 
 Operational helpers for the Watch estate. Deterministic, re-runnable, and safe to read
-before running (each has a header comment).
+before running (each has a header comment). Most are wrapped by `make` targets at the repo
+root (`make help`); the full-lifecycle target is **`make live`** (create + migrate + seed +
+deploy-frontend).
 
 | Script | Profile | What it does |
 |---|---|---|
-| [`teardown.sh`](teardown.sh) | `watch-bootstrap` (write) | Destroys the per-env stacks (and the shared pipeline) dependents-first. Keeps the ~$0 foundation by default — state backend, `ecr`, `prod/dns` (ACM cert + Cloudflare records), `account/*`, `github/*`. |
+| [`create.sh`](create.sh) | `watch-bootstrap` (write) | (Re)creates the estate via `terragrunt run --all apply` (DAG orders + parallelizes). Self-heals a missing `:bootstrap` image; sources `CLOUDFLARE_API_TOKEN` from `.env` for `prod/dns`. |
+| [`db.sh`](db.sh) | `watch-bootstrap` (write) | Runs `migrate`/`seed`/arbitrary command as a one-off Fargate task on the app task def (fresh envs come up on an empty DB). |
+| [`deploy-frontend.sh`](deploy-frontend.sh) | `watch-bootstrap` (write) | Stages the status-page SPA (pins `WATCH_API` to the env's API origin), `s3 sync`s to the frontend bucket, invalidates CloudFront. Terraform makes the bucket/distro but not its contents. |
+| [`teardown.sh`](teardown.sh) | `watch-bootstrap` (write) | Destroys the per-env stacks (and the shared pipeline) dependents-first. Keeps the ~$0 foundation by default — state backend, `ecr`, `prod/dns` cert, `account/*`, `github/*` — but drops the `watch`/`status` CNAMEs so a later create is clean. |
 | [`sweep.sh`](sweep.sh) | `watch-ro` (read-only) | Lists *billable* leftovers in the region and exits nonzero if any remain. Excludes the intentionally-kept foundation (tf-state, ECR, cert). |
+
+## Bring prod up from nothing (foundation already exists)
+```sh
+make live          # = create + migrate ENV=prod + seed ENV=prod + deploy-frontend ENV=prod
+make sweep         # (after a later teardown) confirm nothing billable lingers
+```
+`create` brings up both envs on the kept `:bootstrap` image; `migrate`/`seed` populate the
+fresh prod DB; `deploy-frontend` publishes the status page. The app is then live on
+`watch.davestanton.com`; push code through the pipeline to promote a real build by digest.
 
 ## Nightly / between-release teardown (ADR-019: staging is ephemeral)
 ```sh

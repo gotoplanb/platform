@@ -10,7 +10,7 @@ export ENV ?= prod
 
 .PHONY: help create create-staging create-prod up \
         teardown teardown-staging teardown-prod down \
-        sweep recreate migrate seed live
+        sweep recreate migrate seed deploy-frontend live
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -39,6 +39,8 @@ migrate: ## Run migrations on ENV (default prod): make migrate ENV=prod
 	scripts/db.sh migrate $(ENV)
 seed: ## Seed demo data (t1a..t3b + incidents) on ENV: make seed ENV=prod
 	scripts/db.sh seed $(ENV)
+deploy-frontend: ## Sync status-page SPA to S3 + invalidate CloudFront on ENV
+	scripts/deploy-frontend.sh $(ENV)
 
 ## --- verify (read-only: watch-ro) ---
 sweep: ## Billable-orphan check; nonzero exit if anything lingers
@@ -46,4 +48,4 @@ sweep: ## Billable-orphan check; nonzero exit if anything lingers
 
 ## --- full cycle ---
 recreate: teardown create ## Teardown then create (fresh both envs)
-live: create migrate seed ## Create + migrate + seed prod to a working live demo
+live: create migrate seed deploy-frontend ## Create + migrate + seed + deploy status page (prod)
