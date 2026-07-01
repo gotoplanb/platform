@@ -50,7 +50,7 @@ resource "aws_iam_role_policy" "pipeline" {
 resource "aws_codepipeline" "this" {
   name          = var.name
   role_arn      = aws_iam_role.pipeline.arn
-  pipeline_type = "V2" # V2 required for the git push trigger below (#24)
+  pipeline_type = "V2" # kept on V2 (no native trigger; auto-start is via GHA OIDC, #24)
 
   artifact_store {
     location = aws_s3_bucket.artifacts.bucket
@@ -142,19 +142,10 @@ resource "aws_codepipeline" "this" {
     }
   }
 
-  # Auto-start on a push to the tracked branch via the CodeConnections webhook (#24), so a
-  # merge to main runs build -> DeployStaging -> approval -> DeployProd without a manual start.
-  trigger {
-    provider_type = "CodeStarSourceConnection"
-    git_configuration {
-      source_action_name = "Source"
-      push {
-        branches {
-          includes = [var.github_branch]
-        }
-      }
-    }
-  }
+  # Auto-start on push is driven by the app repo's GitHub Actions workflow via OIDC
+  # (StartPipelineExecution, #24 / modules/ci-pipeline-trigger) — the native CodeConnections
+  # push trigger never delivered events, so it's intentionally NOT configured here (a dead
+  # trigger could double-fire if GitHub's app delivery later started working).
 
   tags = var.tags
 }

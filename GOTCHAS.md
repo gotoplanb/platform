@@ -58,6 +58,20 @@ This file is the "things that cost us an hour" list — read it before the next 
 - **Handler string must match the packaged filename.** `handler.handler` failed because
   the file was `intake_consumer.py` → set the handler to `intake_consumer.handler`.
 
+## Auto-trigger the pipeline on push
+- **The CodeConnections (GitHub App) V2 push trigger never delivered events**, even with the
+  config verbatim-correct (V2 pipeline, `push`/branch filter, `source_action_name` matching),
+  the connection `AVAILABLE`, and the pipeline created *fresh* against the available connection
+  (Source pulls the repo fine; manual + create-triggered runs work). The gap is GitHub-App-side
+  event delivery, not visible/fixable from the AWS CLI. **Don't sink time into the native
+  trigger** — drive it from the app repo's **GitHub Actions via OIDC** instead
+  (`modules/ci-pipeline-trigger` + `.github/workflows/trigger-pipeline.yml` calling
+  `StartPipelineExecution`). Trigger-only (CodePipeline still builds/deploys, ADR-004) and
+  more flexible — switch `main` pushes to release tags with a one-line `on:` change, no IAM.
+- **`list-pipeline-executions --max-items N` appends a `None` pagination token** to
+  `--output text`, corrupting an ID captured with `$(...)`. Use `--query '...[0].field'`
+  without `--max-items`.
+
 ## Pipeline / build-once-promote-by-digest (ADR-017)
 - **`ESCALATION_LOCAL_MODE` defaults to local.** Unset, `start_escalation` uses the
   in-process stub instead of real Step Functions. Set `"0"` explicitly in **both** the app
