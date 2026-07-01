@@ -6,9 +6,11 @@
 SHELL := /bin/bash
 export AWS_REGION ?= us-east-1
 
+export ENV ?= prod
+
 .PHONY: help create create-staging create-prod up \
         teardown teardown-staging teardown-prod down \
-        sweep recreate
+        sweep recreate migrate seed live
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -32,9 +34,16 @@ teardown-prod: ## Destroy prod only
 	scripts/teardown.sh prod -y
 down: teardown ## Alias: teardown
 
+## --- database (write: watch-bootstrap) — fresh envs come up empty until migrated ---
+migrate: ## Run migrations on ENV (default prod): make migrate ENV=prod
+	scripts/db.sh migrate $(ENV)
+seed: ## Seed demo data (t1a..t3b + incidents) on ENV: make seed ENV=prod
+	scripts/db.sh seed $(ENV)
+
 ## --- verify (read-only: watch-ro) ---
 sweep: ## Billable-orphan check; nonzero exit if anything lingers
 	AWS_PROFILE=watch-ro scripts/sweep.sh
 
 ## --- full cycle ---
 recreate: teardown create ## Teardown then create (fresh both envs)
+live: create migrate seed ## Create + migrate + seed prod to a working live demo
