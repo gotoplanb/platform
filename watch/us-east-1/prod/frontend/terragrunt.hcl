@@ -17,6 +17,12 @@ dependency "app" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+dependency "cert" {
+  config_path                             = "../cert"
+  mock_outputs                            = { certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/mock" }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 terraform {
   source = "${get_repo_root()}//modules/frontend"
 }
@@ -28,9 +34,9 @@ inputs = {
   # domain (watch.davestanton.com, CORS). No ALB origin / /api behavior on CloudFront.
   api_origin_domain = ""
 
-  # Custom domain + HTTPS (#13): status.davestanton.com on the cert (SAN of watch.davestanton.com).
-  aliases     = ["status.davestanton.com"]
-  cert_domain = "watch.davestanton.com"
+  # Custom domain + HTTPS (#13): status.davestanton.com on the cert, ARN from ../cert (#35).
+  aliases             = ["status.davestanton.com"]
+  acm_certificate_arn = dependency.cert.outputs.certificate_arn
 
   tags = { env = local.env.env }
 }

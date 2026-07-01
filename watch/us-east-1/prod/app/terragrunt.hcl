@@ -15,6 +15,13 @@ dependency "ecr" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+# Cert ARN from the split cert stack (#35) — no by-hostname lookup, no bootstrap cycle.
+dependency "cert" {
+  config_path                             = "../cert"
+  mock_outputs                            = { certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/mock" }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 dependency "network" {
   config_path = "../network"
   mock_outputs = {
@@ -67,6 +74,7 @@ inputs = {
   private_networking   = local.env.private_networking
   image_repository_url = dependency.ecr.outputs.repository_url
   app_hostname         = "watch.davestanton.com" # adds the ALB :443 HTTPS listener (#13)
+  certificate_arn      = dependency.cert.outputs.certificate_arn # from ../cert (#35)
 
   vpc_id             = dependency.network.outputs.vpc_id
   public_subnet_ids  = dependency.network.outputs.public_subnet_ids

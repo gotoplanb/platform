@@ -1,6 +1,6 @@
-# DNS + TLS for watch / prod / us-east-1 (platform#13). ACM cert + Cloudflare subdomain
-# records for davestanton.com. Only creates watch./status./ACM-validation records — never
-# the apex or existing records. Needs CLOUDFLARE_API_TOKEN in the env (set -a; source .env).
+# DNS records for watch / prod / us-east-1 (platform#13/#35). The app+status subdomain CNAMEs
+# -> ALB / CloudFront; the ACM cert now lives in ../cert (split to match staging + break the
+# bootstrap cycle). Only watch./status. records — never the apex. Needs CLOUDFLARE_API_TOKEN.
 
 include "root" {
   path = find_in_parent_folders("terragrunt.hcl")
@@ -36,7 +36,7 @@ dependency "frontend" {
 }
 
 terraform {
-  source = "${get_repo_root()}//modules/dns-tls"
+  source = "${get_repo_root()}//modules/dns-records" # cert split out to ../cert (#35)
 }
 
 inputs = {

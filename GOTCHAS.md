@@ -40,6 +40,26 @@ This file is the "things that cost us an hour" list — read it before the next 
 - **`waitForTaskToken` must set `ResultPath` (`$.decision`)** or the task output replaces
   the whole state and wipes `incidentId` for later tiers (ADR-007).
 
+## DNS/cert stacks (ACM + Cloudflare)
+- **The cert must be its own stack, applied before the app.** The app looks up / consumes the
+  ACM cert, but a combined dns+cert stack depends on the app (for the CNAME targets) → a
+  bootstrap cycle. It "works" only if the cert already exists (kept). Split into `acm-cert`
+  (no app dep, applies first) + `dns-records` (the CNAMEs); the app takes the cert ARN as an
+  input. Both staging and prod use this (#34/#35).
+- **Migrating a live cert between stacks (#35):** `import` it into the new cert stack, then
+  `state rm` from the old — and **change the old stack's config to drop the cert in the same
+  step**, before any apply (a stack with the cert in config-but-not-state will try to *create*
+  a duplicate; in state-but-not-config it will *destroy* the live one). The cert imports as an
+  in-place tags update (not recreated); the Cloudflare validation records force-replace because
+  import returns the short `name` form vs the module's FQDN — harmless (identical DNS, ~1s gap,
+  issued cert unaffected). `aws_acm_certificate_validation` can't be imported — it just
+  re-creates (confirms the already-issued cert). Verify the ALB `:443` cert ARN is unchanged.
+- **Retrofitting a hostname onto a live blue/green service** flips the production listener from
+  `:80` to `:443`; CodeDeploy then rejects the next deploy ("TaskSet is behind prod listener")
+  because the live task set sits on the *other* target group. A from-scratch create (hostname
+  set from the start) avoids it; to recover an existing env, recreate the ECS service
+  (`-replace`) so blue/green resets to a consistent state.
+
 ## Recreate after teardown (keeping the cert)
 - **`CNAMEAlreadyExists` when re-creating the CloudFront status distro.** If teardown keeps
   `prod/dns` (to avoid slow ACM revalidation) but destroys `frontend`, the Cloudflare
