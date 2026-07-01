@@ -26,7 +26,7 @@ resource "aws_iam_role_policy" "pipeline" {
     Statement = [
       { Effect = "Allow", Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:GetBucketLocation"], Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"] },
       { Effect = "Allow", Action = ["codestar-connections:UseConnection"], Resource = var.connection_arn },
-      { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = aws_codebuild_project.this.arn },
+      { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = [aws_codebuild_project.this.arn, aws_codebuild_project.dast.arn] },
       {
         Effect = "Allow"
         Action = [
@@ -105,6 +105,19 @@ resource "aws_codepipeline" "this" {
         AppSpecTemplateArtifact        = "build"
         AppSpecTemplatePath            = "appspec-staging.yaml"
       }
+    }
+  }
+
+  stage {
+    name = "DAST"
+    action {
+      name            = "DAST"
+      category        = "Test"
+      owner           = "AWS"
+      provider        = "CodeBuild"
+      version         = "1"
+      input_artifacts = ["build"]
+      configuration   = { ProjectName = aws_codebuild_project.dast.name }
     }
   }
 

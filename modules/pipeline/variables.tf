@@ -25,6 +25,12 @@ variable "github_branch" {
   default = "main"
 }
 
+variable "staging_url" {
+  description = "Public HTTPS URL of the staging app for the DAST scan (#32)."
+  type        = string
+  default     = "https://watch-stg.davestanton.com"
+}
+
 # ---- Shared build artifact (platform#20) ------------------------------------
 
 variable "ecr_repository_url" {
