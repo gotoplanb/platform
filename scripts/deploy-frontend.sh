@@ -23,7 +23,7 @@ FRONTEND_SRC="${FRONTEND_SRC:-$HOME/watch/frontend}"
 ENV="${1:-prod}"
 case "$ENV" in
   prod)    API_ORIGIN="${API_ORIGIN:-https://watch.davestanton.com}" ;;
-  staging) API_ORIGIN="${API_ORIGIN:-}" ;;   # staging ALB is http-only; pass API_ORIGIN to override
+  staging) API_ORIGIN="${API_ORIGIN:-https://watch-stg.davestanton.com}" ;; # #34: staging now has HTTPS
   *) echo "usage: deploy-frontend.sh [prod|staging]" >&2; exit 2 ;;
 esac
 [ -d "$FRONTEND_SRC" ] || { echo "frontend source not found: $FRONTEND_SRC" >&2; exit 1; }

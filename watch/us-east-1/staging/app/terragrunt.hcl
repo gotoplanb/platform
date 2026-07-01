@@ -15,6 +15,14 @@ dependency "ecr" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+# HTTPS on watch-stg (#34): take the ACM cert ARN from the cert stack (applied first), so no
+# by-hostname lookup / bootstrap cycle. This also orders cert-before-app in the DAG.
+dependency "cert" {
+  config_path                             = "../cert"
+  mock_outputs                            = { certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/mock" }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 dependency "network" {
   config_path = "../network"
   mock_outputs = {
@@ -66,6 +74,8 @@ inputs = {
 
   private_networking   = local.env.private_networking
   image_repository_url = dependency.ecr.outputs.repository_url
+  app_hostname         = "watch-stg.davestanton.com"          # HTTPS :443 + CSRF/secure cookies (#34)
+  certificate_arn      = dependency.cert.outputs.certificate_arn
 
   vpc_id             = dependency.network.outputs.vpc_id
   public_subnet_ids  = dependency.network.outputs.public_subnet_ids

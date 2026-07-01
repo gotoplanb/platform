@@ -99,24 +99,24 @@ fi
 # The watch/status CNAMEs point at the ALB/CloudFront we're about to destroy. Remove just
 # those two records (keep the ACM cert + validation records — slow to revalidate) so a later
 # create is clean; otherwise CloudFront refuses to re-claim status.* (CNAMEAlreadyExists).
-destroy_dns_records() {
-  local d="$BASE/prod/dns"
+destroy_dns_records() { # $1 = env — drops the app/status CNAMEs, keeps the ACM cert
+  local e="$1" d="$BASE/$1/dns"
   [ -f "$d/terragrunt.hcl" ] || return 0
-  echo "==================== DROP prod/dns CNAME records (keep cert) ===================="
-  if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "SKIP   prod/dns records (CLOUDFLARE_API_TOKEN unset)" >> "$RESULTS"; return 0; fi
+  echo "==================== DROP $e/dns CNAME records (keep cert) ===================="
+  if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "SKIP   $e/dns records (CLOUDFLARE_API_TOKEN unset)" >> "$RESULTS"; return 0; fi
   if ( cd "$d" && terragrunt destroy -target=cloudflare_record.app -target=cloudflare_record.status \
          -auto-approve --non-interactive ); then
-    echo "OK     prod/dns records (watch+status CNAMEs)" >> "$RESULTS"
+    echo "OK     $e/dns records (app+status CNAMEs)" >> "$RESULTS"
   else
-    echo "FAIL   prod/dns records" >> "$RESULTS"
+    echo "FAIL   $e/dns records" >> "$RESULTS"
   fi
 }
 
 # pipeline is shared and references both envs — always destroy it first, synchronously.
 [ "$DO_PIPELINE" = 1 ] && destroy_one "$BASE/pipeline"
 
-# drop the prod CNAMEs before tearing prod down (only when prod is in scope)
-for e in "${ENVS[@]}"; do [ "$e" = prod ] && destroy_dns_records; done
+# drop each in-scope env's app/status CNAMEs before tearing that env down (keeps its cert)
+for e in "${ENVS[@]}"; do destroy_dns_records "$e"; done
 
 if [ "$PARALLEL" = 1 ] && [ "${#ENVS[@]}" -gt 1 ]; then
   pids=()

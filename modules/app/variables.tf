@@ -192,3 +192,9 @@ variable "app_hostname" {
   type        = string
   default     = ""
 }
+
+variable "certificate_arn" {
+  description = "ACM cert ARN for the :443 listener. If set, used directly (from a cert stack, #34); otherwise the cert is looked up by app_hostname. Prod leaves this empty (cert kept + found by lookup)."
+  type        = string
+  default     = ""
+}

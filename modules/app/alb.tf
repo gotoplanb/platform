@@ -106,8 +106,10 @@ resource "aws_lb_listener" "test" {
 # HTTPS production listener (#13). When app_hostname is set, find its ACM cert (the DNS
 # stack created it) and serve :443. The pipeline repoints CodeDeploy's prod route here, so
 # blue/green swaps :443. (:80 redirect → :443 is a follow-up.)
+# Look up the cert by hostname only when an explicit ARN isn't supplied (#34: staging passes
+# the ARN from its cert stack; prod looks up its kept cert).
 data "aws_acm_certificate" "app" {
-  count       = var.app_hostname != "" ? 1 : 0
+  count       = var.app_hostname != "" && var.certificate_arn == "" ? 1 : 0
   domain      = var.app_hostname
   statuses    = ["ISSUED"]
   most_recent = true
@@ -119,7 +121,7 @@ resource "aws_lb_listener" "https" {
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = data.aws_acm_certificate.app[0].arn
+  certificate_arn   = var.certificate_arn != "" ? var.certificate_arn : data.aws_acm_certificate.app[0].arn
 
   default_action {
     type             = "forward"
