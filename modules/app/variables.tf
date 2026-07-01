@@ -151,10 +151,25 @@ variable "autoscale_cpu_target" {
   default = 60
 }
 
-variable "otel_exporter_endpoint" {
-  description = "OTLP/HTTP endpoint (Watchtower collector). Empty disables export until #11 wires it."
+# Telemetry (ADR-016 / #18): the app is backend-agnostic — it exports OTLP to a LOCAL Alloy
+# sidecar, never a remote/vendor endpoint. Where telemetry actually goes is the sidecar's
+# forward target (the per-env gateway, #19/#29), not an app env var.
+variable "alloy_image" {
+  description = "Grafana Alloy sidecar image (OTLP collector). Pin for prod."
+  type        = string
+  default     = "grafana/alloy:latest"
+}
+
+variable "telemetry_gateway_endpoint" {
+  description = "Where the Alloy sidecar forwards OTLP (the per-env gateway, #19). Empty = debug-sink (receives + logs), so the app→sidecar plumbing is verifiable before the gateway exists."
   type        = string
   default     = ""
+}
+
+variable "service_version" {
+  description = "service.version resource attribute (git SHA / image tag); the pipeline can override per build."
+  type        = string
+  default     = "bootstrap"
 }
 
 variable "appconfig_agent_image" {

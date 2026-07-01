@@ -12,10 +12,41 @@ locals {
   # ha → private subnets, no public IP (egress via NAT); lean → public subnets + public IP.
   service_subnets  = var.private_networking ? var.private_subnet_ids : var.public_subnet_ids
   assign_public_ip = !var.private_networking
-  otel_enabled     = var.otel_exporter_endpoint != ""
   container_name   = "app"
   app_port         = 8000
   appconfig_port   = 2772
+  otel_grpc_port   = 4317
+  otel_http_port   = 4318
+
+  # Alloy sidecar config (ADR-016 / #18): receive OTLP from the app on localhost, batch, and
+  # forward to the per-env gateway (#19) — or a debug sink when no gateway is wired yet, so the
+  # app→sidecar path is verifiable. Tail-sampling + redaction + vendor creds live at the
+  # gateway (ADR-016 §3), never in the per-task sidecar.
+  alloy_exporter_ref = var.telemetry_gateway_endpoint != "" ? "otelcol.exporter.otlp.gateway.input" : "otelcol.exporter.debug.sink.input"
+  alloy_exporter_block = var.telemetry_gateway_endpoint != "" ? (
+    "otelcol.exporter.otlp \"gateway\" {\n  client {\n    endpoint = \"${var.telemetry_gateway_endpoint}\"\n    tls { insecure = true }\n  }\n}"
+    ) : (
+    "otelcol.exporter.debug \"sink\" {\n  verbosity = \"basic\"\n}"
+  )
+  alloy_config = <<-EOT
+    otelcol.receiver.otlp "in" {
+      grpc { endpoint = "0.0.0.0:${local.otel_grpc_port}" }
+      http { endpoint = "0.0.0.0:${local.otel_http_port}" }
+      output {
+        traces  = [otelcol.processor.batch.b.input]
+        metrics = [otelcol.processor.batch.b.input]
+        logs    = [otelcol.processor.batch.b.input]
+      }
+    }
+    otelcol.processor.batch "b" {
+      output {
+        traces  = [${local.alloy_exporter_ref}]
+        metrics = [${local.alloy_exporter_ref}]
+        logs    = [${local.alloy_exporter_ref}]
+      }
+    }
+    ${local.alloy_exporter_block}
+  EOT
 
   # The escalation state machine (#7) is named var.name; predict its ARN so the app can
   # StartExecution / SendTaskSuccess without a circular dependency on the escalation stack.
@@ -38,9 +69,13 @@ locals {
     { name = "ESCALATION_LOCAL_MODE", value = "0" }, # real Step Functions engine (default is local)
     # ALB-only ingress (SG) is the trust boundary; #13 tightens this to the real domain.
     { name = "DJANGO_ALLOWED_HOSTS", value = "*" },
-    { name = "OTEL_ENABLED", value = local.otel_enabled ? "1" : "0" },
+    # Backend-agnostic (ADR-016): always export OTLP to the local Alloy sidecar — never a
+    # remote/vendor endpoint. Resource attrs (env + version) are the only per-deploy telemetry
+    # identity the app carries; the SDK merges OTEL_RESOURCE_ATTRIBUTES into the resource.
+    { name = "OTEL_ENABLED", value = "1" },
     { name = "OTEL_SERVICE_NAME", value = "watch-backend" },
-    { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.otel_exporter_endpoint },
+    { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://localhost:${local.otel_http_port}" },
+    { name = "OTEL_RESOURCE_ATTRIBUTES", value = "deployment.environment=${var.env},service.version=${var.service_version}" },
     ], var.app_hostname != "" ? [
     # HTTPS (#13): trust the public origin for CSRF + secure cookies behind the ALB.
     { name = "CSRF_TRUSTED_ORIGINS", value = "https://${var.app_hostname}" },
@@ -96,6 +131,31 @@ locals {
           "awslogs-group"         = aws_cloudwatch_log_group.app.name
           "awslogs-region"        = var.region
           "awslogs-stream-prefix" = "appconfig-agent"
+        }
+      }
+    },
+    {
+      # Alloy telemetry sidecar (ADR-016 / #18): receives the app's OTLP on localhost
+      # :4317/:4318 and forwards to the per-env gateway. essential=false — telemetry down must
+      # never take the app down (the app buffers; egress stays off the critical path). Config
+      # is delivered via env→file so no custom image is needed (#19 may move it to SSM/S3).
+      name       = "alloy"
+      image      = var.alloy_image
+      essential  = false
+      entryPoint = ["sh", "-c", "printf '%s' \"$ALLOY_CONFIG\" > /tmp/config.alloy && exec alloy run /tmp/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/tmp/alloy"]
+      environment = [
+        { name = "ALLOY_CONFIG", value = local.alloy_config }
+      ]
+      portMappings = [
+        { containerPort = local.otel_grpc_port, protocol = "tcp" },
+        { containerPort = local.otel_http_port, protocol = "tcp" },
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.app.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "alloy"
         }
       }
     },
