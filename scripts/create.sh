@@ -85,7 +85,37 @@ fi
 echo "==================== SUMMARY ===================="
 if [ "$rc" -ne 0 ]; then echo "apply failed (rc=$rc) — inspect above; re-run is idempotent"; exit "$rc"; fi
 echo "create complete ($WHICH)."
+
+# First-ever create leaves the persistent GitHub connection PENDING (#33) — it needs the
+# one-time browser authorization before the pipeline can pull the repo. It's KEPT across future
+# recreates, so this only fires once.
+if [ "$WHICH" = both ]; then
+  cstat=$(aws codestar-connections list-connections --region "$REGION" \
+    --query "Connections[?ConnectionName=='watch-github'].ConnectionStatus | [0]" --output text 2>/dev/null || true)
+  if [ "$cstat" = "PENDING" ]; then
+    echo "ACTION: connection 'watch-github' is PENDING — authorize it once (survives future recreates):"
+    echo "        https://$REGION.console.aws.amazon.com/codesuite/settings/connections?region=$REGION"
+  fi
+fi
+
+# A freshly-created V2 pipeline auto-starts one run (trigger=CreatePipeline). On a recreate we
+# want the estate up on the :bootstrap image, with deploys coming from an explicit push (#24) —
+# so abandon that redundant auto-run if it appeared.
 case "$WHICH" in
-  prod|both) echo "prod live: https://watch.davestanton.com  https://status.davestanton.com" ;;
+  both|pipeline)
+    for _ in 1 2 3; do
+      read -r pst ptr < <(aws codepipeline list-pipeline-executions --region "$REGION" --pipeline-name watch \
+        --query 'pipelineExecutionSummaries[0].[status,trigger.triggerType]' --output text 2>/dev/null || true)
+      if [ "${ptr:-}" = "CreatePipeline" ] && [ "${pst:-}" = "InProgress" ]; then
+        peid=$(aws codepipeline list-pipeline-executions --region "$REGION" --pipeline-name watch \
+          --query 'pipelineExecutionSummaries[0].pipelineExecutionId' --output text 2>/dev/null)
+        aws codepipeline stop-pipeline-execution --region "$REGION" --pipeline-name watch \
+          --pipeline-execution-id "$peid" --abandon --reason "recreate: keep bootstrap; deploy via push" >/dev/null 2>&1 \
+          && echo "Stopped the pipeline's auto-start run — deploy via a push (#24)."
+        break
+      fi
+      sleep 5
+    done ;;
 esac
-echo "Next: push to the tracked branch to auto-run the pipeline (#24), or start it manually."
+
+echo "Next: push to the tracked branch to run the pipeline (GitHub Actions → CodePipeline, #24)."
