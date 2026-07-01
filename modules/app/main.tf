@@ -81,6 +81,7 @@ locals {
     { name = "CSRF_TRUSTED_ORIGINS", value = "https://${var.app_hostname}" },
     { name = "SESSION_COOKIE_SECURE", value = "1" },
     { name = "CSRF_COOKIE_SECURE", value = "1" },
+    { name = "SECURE_HSTS_SECONDS", value = tostring(var.hsts_seconds) }, # HSTS (#30)
   ] : [])
 
   # Secrets resolved at launch by the execution role (SSM SecureStrings + the RDS-managed

@@ -37,9 +37,22 @@ variable "cost_filters" {
   default     = {}
 }
 
+variable "cost_allocation_tags" {
+  description = "User-defined tag keys to activate as cost-allocation tags (required before a TagKeyValue budget filter tracks any cost). Activate once from the account-wide budget; ~24h lag and only counts spend going forward."
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
+}
+
+# Activate the env tag for cost allocation so the per-env budgets below can filter on it.
+resource "aws_ce_cost_allocation_tag" "this" {
+  for_each = toset(var.cost_allocation_tags)
+  tag_key  = each.value
+  status   = "Active"
 }
 
 resource "aws_budgets_budget" "this" {

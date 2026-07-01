@@ -12,8 +12,11 @@ terraform {
 
 inputs = {
   name                = "watch-daily-cost"
-  amount              = 10 # placeholder daily limit (USD)
+  amount              = 20 # overall daily cap (USD) — covers prod + staging + foundation (#31)
   time_unit           = "DAILY"
   thresholds          = [80, 100]
   notification_emails = ["davestanton.us@gmail.com"]
+
+  # Activate the env tag for cost allocation (once) so the per-env budgets can filter on it.
+  cost_allocation_tags = ["env"]
 }

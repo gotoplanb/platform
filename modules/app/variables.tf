@@ -198,3 +198,9 @@ variable "certificate_arn" {
   type        = string
   default     = ""
 }
+
+variable "hsts_seconds" {
+  description = "Strict-Transport-Security max-age emitted by Django when app_hostname is set (#30). 31536000 = 1 year."
+  type        = number
+  default     = 31536000
+}

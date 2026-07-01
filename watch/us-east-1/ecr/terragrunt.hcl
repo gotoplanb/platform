@@ -11,5 +11,5 @@ terraform {
 
 inputs = {
   name = "watch"
-  tags = { scope = "shared" }
+  tags = { scope = "shared", env = "platform" }
 }

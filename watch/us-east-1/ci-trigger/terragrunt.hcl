@@ -23,5 +23,5 @@ inputs = {
   repo              = "watch"
   pipeline_name     = "watch"
   region            = "us-east-1"
-  tags              = { project = "watch" }
+  tags              = { project = "watch", env = "platform" }
 }

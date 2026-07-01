@@ -12,5 +12,5 @@ terraform {
 
 inputs = {
   name = "watch-github"
-  tags = { project = "watch" }
+  tags = { project = "watch", env = "platform" }
 }
