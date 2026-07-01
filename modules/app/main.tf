@@ -142,7 +142,9 @@ locals {
       name       = "alloy"
       image      = var.alloy_image
       essential  = false
-      entryPoint = ["sh", "-c", "printf '%s' \"$ALLOY_CONFIG\" > /tmp/config.alloy && exec alloy run /tmp/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/tmp/alloy"]
+      # --stability.level=experimental enables otelcol.exporter.debug (the no-gateway sink);
+      # the GA otlp exporter used once a gateway is wired doesn't need it, but the flag is safe.
+      entryPoint = ["sh", "-c", "printf '%s' \"$ALLOY_CONFIG\" > /tmp/config.alloy && exec alloy run /tmp/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/tmp/alloy --stability.level=experimental"]
       environment = [
         { name = "ALLOY_CONFIG", value = local.alloy_config }
       ]
