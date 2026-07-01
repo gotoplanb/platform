@@ -89,7 +89,7 @@ aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null || { echo "n
 echo "Region  : $REGION"
 echo "Envs    : ${ENVS[*]}$([ "$DO_PIPELINE" = 1 ] && echo ' (+ pipeline first)')"
 echo "Mode    : $([ "$PARALLEL" = 1 ] && [ "${#ENVS[@]}" -gt 1 ] && echo 'parallel (per-env)' || echo sequential)"
-echo "Kept    : state backend, ecr, account/*, github/*$([ "$WITH_DNS" = 1 ] && echo '' || echo ', prod/dns')"
+echo "Kept    : state backend, ecr, connection, account/*, github/*$([ "$WITH_DNS" = 1 ] && echo '' || echo ', prod/dns')"
 
 if [ "$ASSUME_YES" != 1 ]; then
   read -r -p "Proceed? [y/N] " ans

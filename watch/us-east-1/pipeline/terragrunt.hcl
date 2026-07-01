@@ -16,6 +16,12 @@ dependency "ecr" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+dependency "connection" {
+  config_path                             = "../connection"
+  mock_outputs                            = { connection_arn = "arn:aws:codestar-connections:us-east-1:000000000000:connection/mock" }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 dependency "staging_app" {
   config_path = "../staging/app"
   mock_outputs = {
@@ -64,6 +70,7 @@ inputs = {
   region             = local.region
   github_repo_id     = "gotoplanb/watch"
   github_branch      = "main"
+  connection_arn     = dependency.connection.outputs.connection_arn
   ecr_repository_url = dependency.ecr.outputs.repository_url
 
   staging = {

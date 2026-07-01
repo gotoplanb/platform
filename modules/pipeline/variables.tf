@@ -10,6 +10,11 @@ variable "region" {
 
 # ---- Source (GitHub via CodeConnections) ------------------------------------
 
+variable "connection_arn" {
+  description = "CodeConnections ARN for the GitHub source, from the persistent connection stack (#33)."
+  type        = string
+}
+
 variable "github_repo_id" {
   type    = string
   default = "gotoplanb/watch"

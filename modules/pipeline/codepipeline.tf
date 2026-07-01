@@ -25,7 +25,7 @@ resource "aws_iam_role_policy" "pipeline" {
     Version = "2012-10-17"
     Statement = [
       { Effect = "Allow", Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:GetBucketLocation"], Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"] },
-      { Effect = "Allow", Action = ["codestar-connections:UseConnection"], Resource = aws_codestarconnections_connection.github.arn },
+      { Effect = "Allow", Action = ["codestar-connections:UseConnection"], Resource = var.connection_arn },
       { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = aws_codebuild_project.this.arn },
       {
         Effect = "Allow"
@@ -67,7 +67,7 @@ resource "aws_codepipeline" "this" {
       version          = "1"
       output_artifacts = ["source"]
       configuration = {
-        ConnectionArn    = aws_codestarconnections_connection.github.arn
+        ConnectionArn    = var.connection_arn
         FullRepositoryId = var.github_repo_id
         BranchName       = var.github_branch
       }

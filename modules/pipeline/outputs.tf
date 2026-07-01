@@ -1,10 +1,6 @@
 output "connection_arn" {
-  description = "CodeConnections ARN — complete the OAuth handshake before the first run."
-  value       = aws_codestarconnections_connection.github.arn
-}
-
-output "connection_status" {
-  value = aws_codestarconnections_connection.github.connection_status
+  description = "CodeConnections ARN in use (owned by the persistent connection stack, #33)."
+  value       = var.connection_arn
 }
 
 output "pipeline_name" {

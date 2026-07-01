@@ -34,13 +34,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "artifacts" {
   }
 }
 
-# ---- GitHub source connection (PENDING until the one-time handshake) ---------
-
-resource "aws_codestarconnections_connection" "github" {
-  name          = substr("${var.name}-gh", 0, 32)
-  provider_type = "GitHub"
-  tags          = var.tags
-}
+# The GitHub source connection now lives in its own persistent stack (platform#33) and is
+# passed in via var.connection_arn — see modules/connection. Keeping it out of this stack is
+# what lets the #24 push trigger register (pipeline created against an AVAILABLE connection).
 
 # ---- Per-env migration hook Lambda (BeforeAllowTraffic) ----------------------
 # Runs `manage.py migrate` on that env's green task def before its traffic shifts (#12).
