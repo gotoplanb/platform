@@ -62,14 +62,17 @@ resource "aws_codebuild_project" "dast" {
         build:
           commands:
             - echo "DAST (ZAP baseline) against $TARGET_URL"
+            # The ZAP image runs as uid 1000 (user 'zap'); make the mounted work dir writable
+            # by it so the report can be generated.
+            - WRK="$(pwd)/zap-wrk"; mkdir -p "$WRK"; chmod 777 "$WRK"
             - |
-              docker run --rm -v "$(pwd):/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+              docker run --rm -v "$WRK:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
                 zap-baseline.py -t "$TARGET_URL" -I -m 5 -r zap-report.html -w zap-report.md
               DAST_RC=$?
               echo "ZAP exit=$DAST_RC (0=pass, non-zero=FAIL-level alerts)"
             - TS=$(date +%Y%m%d-%H%M%S)
-            - aws s3 cp zap-report.html "s3://$ARTIFACT_BUCKET/dast/$TS-zap-report.html" 2>/dev/null || true
-            - aws s3 cp zap-report.md   "s3://$ARTIFACT_BUCKET/dast/$TS-zap-report.md"   2>/dev/null || true
+            - aws s3 cp "$WRK/zap-report.html" "s3://$ARTIFACT_BUCKET/dast/$TS-zap-report.html" || true
+            - aws s3 cp "$WRK/zap-report.md"   "s3://$ARTIFACT_BUCKET/dast/$TS-zap-report.md"   || true
             - exit $${DAST_RC:-0}
     YAML
   }
