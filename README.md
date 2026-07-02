@@ -9,6 +9,13 @@ projects.
 **Principle (ADR-006 in `gotoplanb/watch`):** if Terraform can manage it, it does —
 no click-ops.
 
+## Docs
+- **[docs/architecture/](docs/architecture/)** — how it fits together: [stacks](docs/architecture/stacks.md),
+  [runtime](docs/architecture/runtime.md), [delivery](docs/architecture/delivery.md), [foundations](docs/architecture/foundations.md).
+- **[ROLLOUT.md](ROLLOUT.md)** — the rollout plan + sequence + cost profiles.
+- **[GOTCHAS.md](GOTCHAS.md)** — traps discovered building it · **[docs/releases/](docs/releases/)** — per-version changes.
+- Decisions/tradeoffs (ADRs) live in `gotoplanb/watch` → `watch-adrs.md`.
+
 ## Scope (intended)
 - **AWS** — shared bootstrap (Terraform state backend, GitHub OIDC), per-project stacks
   (network / data / app / escalation / intake / frontend), CodePipeline blue/green.
