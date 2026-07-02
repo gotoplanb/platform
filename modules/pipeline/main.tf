@@ -89,6 +89,15 @@ resource "aws_iam_role_policy" "hook" {
   })
 }
 
+# Declared so Lambda reuses it (instead of auto-creating one outside TF) and teardown removes it
+# — otherwise /aws/lambda/<fn> orphans on every destroy (platform#38).
+resource "aws_cloudwatch_log_group" "hook" {
+  for_each          = local.envs
+  name              = "/aws/lambda/${var.name}-${each.key}-deploy-hook"
+  retention_in_days = var.log_retention_days
+  tags              = var.tags
+}
+
 resource "aws_lambda_function" "hook" {
   for_each      = local.envs
   function_name = "${var.name}-${each.key}-deploy-hook"

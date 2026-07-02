@@ -58,6 +58,14 @@ resource "aws_iam_role_policy" "authorizer_ssm" {
   })
 }
 
+# Declared so Lambda reuses it (instead of auto-creating one outside TF) and teardown removes it
+# — otherwise /aws/lambda/<fn> orphans on every destroy (platform#38).
+resource "aws_cloudwatch_log_group" "authorizer" {
+  name              = "/aws/lambda/${var.name}-intake-authorizer"
+  retention_in_days = var.log_retention_days
+  tags              = var.tags
+}
+
 resource "aws_lambda_function" "authorizer" {
   function_name = "${var.name}-intake-authorizer"
   role          = aws_iam_role.authorizer.arn
@@ -132,6 +140,12 @@ resource "aws_iam_role_policy" "consumer" {
       },
     ]
   })
+}
+
+resource "aws_cloudwatch_log_group" "consumer" {
+  name              = "/aws/lambda/${var.name}-intake-consumer"
+  retention_in_days = var.log_retention_days
+  tags              = var.tags
 }
 
 resource "aws_lambda_function" "consumer" {

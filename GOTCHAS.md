@@ -72,6 +72,14 @@ This file is the "things that cost us an hour" list — read it before the next 
   the target-destroy runs even when `app`/`frontend` state is already gone.
 
 ## Lambda packaging
+- **`/aws/lambda/<fn>` log groups orphan on teardown (fixed, #38).** Lambda auto-creates its
+  log group on first invocation, *outside* Terraform — so `destroy` never removed them and every
+  teardown left `/aws/lambda/watch-*-deploy-hook` + intake authorizer/consumer groups for the
+  sweep. Fixed by declaring an `aws_cloudwatch_log_group` per Lambda (escalation already did;
+  added intake authorizer/consumer + the pipeline deploy-hook `for_each`), so Lambda reuses the
+  managed group and teardown deletes it. Takes effect on the **next clean create** — groups
+  auto-created by a *pre-fix* create aren't in state, so they'd collide on re-apply; sweep them
+  once (or `terragrunt import` them) so the first post-fix create is clean.
 - **250 MB unzipped limit.** `cp -r backend/.` dragged in the fat `.venv` that
   `make coverage` builds → over the limit. Copy only `backend/config` + `backend/incidents`,
   and use a slim `escalation/lambdas/requirements.txt` (no OTel/gRPC).
