@@ -26,7 +26,7 @@ resource "aws_iam_role_policy" "pipeline" {
     Statement = [
       { Effect = "Allow", Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:GetBucketLocation"], Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"] },
       { Effect = "Allow", Action = ["codestar-connections:UseConnection"], Resource = var.connection_arn },
-      { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = [aws_codebuild_project.this.arn, aws_codebuild_project.dast.arn] },
+      { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = [aws_codebuild_project.this.arn, aws_codebuild_project.dast.arn, aws_codebuild_project.smoke.arn] },
       {
         Effect = "Allow"
         Action = [
@@ -118,6 +118,19 @@ resource "aws_codepipeline" "this" {
       version         = "1"
       input_artifacts = ["build"]
       configuration   = { ProjectName = aws_codebuild_project.dast.name }
+    }
+  }
+
+  stage {
+    name = "Smoke"
+    action {
+      name            = "Smoke"
+      category        = "Test"
+      owner           = "AWS"
+      provider        = "CodeBuild"
+      version         = "1"
+      input_artifacts = ["source"] # the app repo (has e2e/)
+      configuration   = { ProjectName = aws_codebuild_project.smoke.name }
     }
   }
 

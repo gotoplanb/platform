@@ -26,9 +26,21 @@ variable "github_branch" {
 }
 
 variable "staging_url" {
-  description = "Public HTTPS URL of the staging app for the DAST scan (#32)."
+  description = "Public HTTPS URL of the staging app for the DAST scan (#32) + smoke test."
   type        = string
   default     = "https://watch-stg.davestanton.com"
+}
+
+variable "staging_status_url" {
+  description = "Public HTTPS URL of the staging status page for the smoke test (#… E2E gate)."
+  type        = string
+  default     = "https://status-stg.davestanton.com"
+}
+
+variable "staging_intake_secret_param" {
+  description = "SSM parameter name of the staging intake webhook secret (injected into the smoke test)."
+  type        = string
+  default     = "/watch/staging/intake-webhook-secret"
 }
 
 # ---- Shared build artifact (platform#20) ------------------------------------
