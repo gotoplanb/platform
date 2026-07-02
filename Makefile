@@ -52,4 +52,12 @@ sweep: ## Billable-orphan check; nonzero exit if anything lingers
 
 ## --- full cycle ---
 recreate: teardown create ## Teardown then create (fresh both envs)
-live: create migrate seed deploy-frontend deploy ## Full bring-up: create + migrate + seed + status page + promote latest main
+live: ## ONE approval: stand up the platform + BOTH app envs (create, migrate+seed+status page for each, promote latest main)
+	scripts/create.sh both -y
+	scripts/db.sh migrate staging
+	scripts/db.sh migrate prod
+	scripts/db.sh seed staging
+	scripts/db.sh seed prod
+	scripts/deploy-frontend.sh staging
+	scripts/deploy-frontend.sh prod
+	scripts/deploy.sh

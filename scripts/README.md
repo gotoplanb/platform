@@ -14,11 +14,15 @@ deploy-frontend).
 | [`teardown.sh`](teardown.sh) | `watch-bootstrap` (write) | Destroys the per-env stacks (and the shared pipeline) dependents-first. Keeps the ~$0 foundation by default — state backend, `ecr`, `prod/dns` cert, `account/*`, `github/*` — but drops the `watch`/`status` CNAMEs so a later create is clean. |
 | [`sweep.sh`](sweep.sh) | `watch-ro` (read-only) | Lists *billable* leftovers in the region and exits nonzero if any remain. Excludes the intentionally-kept foundation (tf-state, ECR, cert). |
 
-## Bring prod up from nothing (foundation already exists)
+## Bring everything up from nothing (foundation already exists)
 ```sh
-make live          # = create + migrate ENV=prod + seed ENV=prod + deploy-frontend ENV=prod
+make live          # ONE approval: platform + BOTH app envs, then promote latest main
 make sweep         # (after a later teardown) confirm nothing billable lingers
 ```
+`make live` = `create` (both envs) → `migrate`+`seed` **staging and prod** → `deploy-frontend`
+**staging and prod** → `deploy` (promote latest `main` through the pipeline to the prod-approval
+gate). One human approval stands up the platform + both app envs; the pipeline's prod approval
+is the separate gate for promoting real code to prod.
 `create` brings up both envs on the kept `:bootstrap` image; `migrate`/`seed` populate the
 fresh prod DB; `deploy-frontend` publishes the status page; **`deploy`** then promotes latest
 `main` through the pipeline (Build → DeployStaging → DAST) and pauses at the prod-approval gate
