@@ -46,19 +46,14 @@ variable "sampling_percentage" {
 # token is NOT here — Alloy reads it from an env var (fed by the task-def secrets block), so it
 # never lands in config/state.
 variable "vendor_endpoint" {
-  description = "HTTPS OTLP endpoint of a managed vendor (e.g. https://otlp-gateway-<region>.grafana.net/otlp). Takes precedence over forward_endpoint."
+  description = "HTTPS OTLP endpoint of a managed vendor (Grafana Cloud's OTEL_EXPORTER_OTLP_ENDPOINT, e.g. https://otlp-gateway-<zone>.grafana.net/otlp). Takes precedence over forward_endpoint."
   type        = string
   default     = ""
 }
-variable "vendor_auth_username" {
-  description = "Basic-auth username for the vendor (Grafana Cloud instance ID)."
+variable "vendor_auth_header_env" {
+  description = "Name of the env var holding the full Authorization header value (e.g. \"Basic <base64>\") — Alloy reads it via sys.env. This is the header half of Grafana Cloud's OTEL_EXPORTER_OTLP_HEADERS."
   type        = string
-  default     = ""
-}
-variable "vendor_token_env" {
-  description = "Name of the env var holding the vendor token (Alloy reads it via sys.env)."
-  type        = string
-  default     = "VENDOR_OTLP_TOKEN"
+  default     = "VENDOR_OTLP_AUTH"
 }
 
 locals {
@@ -66,14 +61,12 @@ locals {
   has_grpc    = !local.has_vendor && var.forward_endpoint != ""
   do_sampling = var.role == "gateway" && var.tail_sampling
 
-  # Basic-auth extension for the vendor export (Grafana Cloud). Password comes from an env var,
-  # never the config text.
-  auth_block = local.has_vendor ? "otelcol.auth.basic \"vendor\" {\n  username = \"${var.vendor_auth_username}\"\n  password = sys.env(\"${var.vendor_token_env}\")\n}\n" : ""
-
-  # Destination, in precedence order: managed vendor (OTLP/HTTP + basic auth + TLS) →
-  # in-VPC gRPC (plaintext, SG-scoped) → debug sink (no backend wired yet).
+  # Destination, in precedence order: managed vendor (OTLP/HTTP over TLS, Authorization header
+  # from an env var — the shape Grafana Cloud emits) → in-VPC gRPC (plaintext, SG-scoped) →
+  # debug sink (no backend wired yet). The header value (which encodes the token) is never in
+  # the config text — Alloy reads it via sys.env.
   exporter_block = (
-    local.has_vendor ? "otelcol.exporter.otlphttp \"dest\" {\n  client {\n    endpoint = \"${var.vendor_endpoint}\"\n    auth     = otelcol.auth.basic.vendor.handler\n  }\n}" :
+    local.has_vendor ? "otelcol.exporter.otlphttp \"dest\" {\n  client {\n    endpoint = \"${var.vendor_endpoint}\"\n    headers  = {\n      \"Authorization\" = sys.env(\"${var.vendor_auth_header_env}\"),\n    }\n  }\n}" :
     local.has_grpc ? "otelcol.exporter.otlp \"dest\" {\n  client {\n    endpoint = \"${var.forward_endpoint}\"\n    tls { insecure = true }\n  }\n}" :
     "otelcol.exporter.debug \"dest\" {\n  verbosity = \"basic\"\n}"
   )
@@ -115,7 +108,7 @@ locals {
         logs    = [${local.dest_input}]
       }
     }
-    ${local.auth_block}${local.exporter_block}
+    ${local.exporter_block}
   EOT
 }
 

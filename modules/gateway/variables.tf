@@ -50,13 +50,8 @@ variable "vendor_endpoint" {
   type        = string
   default     = ""
 }
-variable "vendor_auth_username" {
-  description = "Basic-auth username (Grafana Cloud instance ID). Not secret."
-  type        = string
-  default     = ""
-}
-variable "vendor_token" {
-  description = "The vendor token. Supply via TF_VAR_vendor_token (env-backed, sensitive); Terraform creates the SSM SecureString from it. Value lands in state (encrypted), like the existing random_password secrets."
+variable "vendor_auth_header" {
+  description = "Full Authorization header value for the vendor OTLP export (e.g. \"Basic <base64>\"), i.e. the header half of Grafana Cloud's OTEL_EXPORTER_OTLP_HEADERS. Sensitive (the base64 encodes the token); Terraform stores it as an SSM SecureString and the gateway reads it via the secrets block. Empty => no vendor export."
   type        = string
   default     = ""
   sensitive   = true

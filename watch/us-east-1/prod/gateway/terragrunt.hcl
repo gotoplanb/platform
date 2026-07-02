@@ -38,10 +38,13 @@ inputs = {
   private_subnet_ids = dependency.network.outputs.private_subnet_ids
   app_sg_id          = dependency.network.outputs.app_sg_id
 
-  # prod → Grafana Cloud (ADR-016 §2). From ~/platform/.env; empty → debug sink until populated.
-  vendor_endpoint      = get_env("GRAFANA_CLOUD_OTLP_ENDPOINT", "")
-  vendor_auth_username = get_env("GRAFANA_CLOUD_INSTANCE_ID", "")
-  vendor_token         = get_env("GRAFANA_CLOUD_TOKEN", "")
+  # prod → Grafana Cloud (ADR-016 §2). Consumes exactly what Grafana Cloud's OTLP connection
+  # emits (from ~/platform/.env): the endpoint, and OTEL_EXPORTER_OTLP_HEADERS. That header is
+  # URL-encoded per the OTel spec — Grafana gives "Authorization=Basic%20<base64>" (only the space
+  # is encoded; the base64 alphabet is left as-is). Strip "Authorization=" and turn %20 back into a
+  # space to get the real header value "Basic <base64>". Empty → debug sink until .env is populated.
+  vendor_endpoint    = get_env("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+  vendor_auth_header = replace(trimprefix(get_env("OTEL_EXPORTER_OTLP_HEADERS", ""), "Authorization="), "%20", " ")
 
   # Tail-sampling (ADR-016 §3 / #23) is a gated var, left off pending enablement.
   desired_count = 1
