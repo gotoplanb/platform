@@ -8,9 +8,11 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  grpc_port  = 4317
-  http_port  = 4318
-  admin_port = 12345
+  grpc_port        = 4317
+  http_port        = 4318
+  admin_port       = 12345
+  vendor_token_env = "VENDOR_OTLP_TOKEN"
+  has_vendor_token = var.vendor_token_secret_arn != ""
 
   # Follow the app's cost profile (ADR-015): lean → public subnets + public IP (no NAT);
   # ha → private subnets, egress via NAT. A private task with no public IP + no NAT can't
@@ -20,13 +22,16 @@ locals {
 }
 
 module "config" {
-  source              = "../alloy"
-  role                = "gateway"
-  grpc_port           = local.grpc_port
-  http_port           = local.http_port
-  forward_endpoint    = var.forward_endpoint
-  tail_sampling       = var.tail_sampling
-  sampling_percentage = var.sampling_percentage
+  source               = "../alloy"
+  role                 = "gateway"
+  grpc_port            = local.grpc_port
+  http_port            = local.http_port
+  forward_endpoint     = var.forward_endpoint
+  vendor_endpoint      = var.vendor_endpoint
+  vendor_auth_username = var.vendor_auth_username
+  vendor_token_env     = local.vendor_token_env
+  tail_sampling        = var.tail_sampling
+  sampling_percentage  = var.sampling_percentage
 }
 
 resource "aws_ecs_cluster" "this" {
@@ -111,6 +116,29 @@ resource "aws_iam_role" "task" {
   tags               = var.tags
 }
 
+# Execution role reads the vendor token (SecureString) at launch.
+data "aws_iam_policy_document" "read_token" {
+  count = local.has_vendor_token ? 1 : 0
+  statement {
+    actions   = ["ssm:GetParameters"]
+    resources = [var.vendor_token_secret_arn]
+  }
+  statement {
+    actions   = ["kms:Decrypt"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ssm.${var.region}.amazonaws.com"]
+    }
+  }
+}
+resource "aws_iam_role_policy" "read_token" {
+  count  = local.has_vendor_token ? 1 : 0
+  role   = aws_iam_role.execution.id
+  policy = data.aws_iam_policy_document.read_token[0].json
+}
+
 resource "aws_cloudwatch_log_group" "gateway" {
   name              = "/ecs/${var.name}-gateway"
   retention_in_days = var.log_retention_days
@@ -136,6 +164,10 @@ resource "aws_ecs_task_definition" "gateway" {
       environment = [
         { name = "ALLOY_CONFIG", value = module.config.config }
       ]
+      # Vendor token (Grafana Cloud) resolved at launch by the execution role — never inlined.
+      secrets = local.has_vendor_token ? [
+        { name = local.vendor_token_env, valueFrom = var.vendor_token_secret_arn }
+      ] : []
       portMappings = [
         { containerPort = local.grpc_port, protocol = "tcp" },
         { containerPort = local.http_port, protocol = "tcp" },

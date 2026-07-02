@@ -41,17 +41,47 @@ variable "sampling_percentage" {
   default = 10
 }
 
+# Vendor export (ADR-016 §2: prod → managed vendor, e.g. Grafana Cloud). When set, the gateway
+# exports via OTLP/HTTP with basic auth over TLS instead of the plaintext in-VPC gRPC hop. The
+# token is NOT here — Alloy reads it from an env var (fed by the task-def secrets block), so it
+# never lands in config/state.
+variable "vendor_endpoint" {
+  description = "HTTPS OTLP endpoint of a managed vendor (e.g. https://otlp-gateway-<region>.grafana.net/otlp). Takes precedence over forward_endpoint."
+  type        = string
+  default     = ""
+}
+variable "vendor_auth_username" {
+  description = "Basic-auth username for the vendor (Grafana Cloud instance ID)."
+  type        = string
+  default     = ""
+}
+variable "vendor_token_env" {
+  description = "Name of the env var holding the vendor token (Alloy reads it via sys.env)."
+  type        = string
+  default     = "VENDOR_OTLP_TOKEN"
+}
+
 locals {
-  has_dest   = var.forward_endpoint != ""
+  has_vendor  = var.vendor_endpoint != ""
+  has_grpc    = !local.has_vendor && var.forward_endpoint != ""
   do_sampling = var.role == "gateway" && var.tail_sampling
 
-  # Destination: real OTLP export, or a debug sink until a backend is wired.
-  exporter_block = local.has_dest ? (
-    "otelcol.exporter.otlp \"dest\" {\n  client {\n    endpoint = \"${var.forward_endpoint}\"\n    tls { insecure = true }\n  }\n}"
-    ) : (
+  # Basic-auth extension for the vendor export (Grafana Cloud). Password comes from an env var,
+  # never the config text.
+  auth_block = local.has_vendor ? "otelcol.auth.basic \"vendor\" {\n  username = \"${var.vendor_auth_username}\"\n  password = sys.env(\"${var.vendor_token_env}\")\n}\n" : ""
+
+  # Destination, in precedence order: managed vendor (OTLP/HTTP + basic auth + TLS) →
+  # in-VPC gRPC (plaintext, SG-scoped) → debug sink (no backend wired yet).
+  exporter_block = (
+    local.has_vendor ? "otelcol.exporter.otlphttp \"dest\" {\n  client {\n    endpoint = \"${var.vendor_endpoint}\"\n    auth     = otelcol.auth.basic.vendor.handler\n  }\n}" :
+    local.has_grpc ? "otelcol.exporter.otlp \"dest\" {\n  client {\n    endpoint = \"${var.forward_endpoint}\"\n    tls { insecure = true }\n  }\n}" :
     "otelcol.exporter.debug \"dest\" {\n  verbosity = \"basic\"\n}"
   )
-  dest_input = local.has_dest ? "otelcol.exporter.otlp.dest.input" : "otelcol.exporter.debug.dest.input"
+  dest_input = (
+    local.has_vendor ? "otelcol.exporter.otlphttp.dest.input" :
+    local.has_grpc ? "otelcol.exporter.otlp.dest.input" :
+    "otelcol.exporter.debug.dest.input"
+  )
 
   # Traces enter tail-sampling (gateway + enabled) or go straight to batch.
   traces_entry = local.do_sampling ? "otelcol.processor.tail_sampling.ts.input" : "otelcol.processor.batch.b.input"
@@ -85,7 +115,7 @@ locals {
         logs    = [${local.dest_input}]
       }
     }
-    ${local.exporter_block}
+    ${local.auth_block}${local.exporter_block}
   EOT
 }
 
@@ -96,5 +126,5 @@ output "config" {
 
 output "needs_experimental" {
   description = "True when the config uses an experimental component (debug sink / tail_sampling) — pass --stability.level=experimental."
-  value       = !local.has_dest || local.do_sampling
+  value       = (!local.has_vendor && !local.has_grpc) || local.do_sampling
 }

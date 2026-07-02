@@ -37,7 +37,26 @@ variable "alloy_image" {
 }
 
 variable "forward_endpoint" {
-  description = "gRPC endpoint the gateway exports to (the Watchtower slice / vendor). Empty => debug sink."
+  description = "In-VPC gRPC endpoint the gateway exports to (the Watchtower Tempo slice). Empty => debug sink. Ignored when vendor_endpoint is set."
+  type        = string
+  default     = ""
+}
+
+# Managed-vendor export (ADR-016 §2: prod → Grafana Cloud / Datadog / Sumo). When set, the
+# gateway exports via OTLP/HTTP + basic auth over TLS. The token is delivered through the
+# task-def secrets block (SSM/Secrets ARN), never inlined.
+variable "vendor_endpoint" {
+  description = "HTTPS OTLP endpoint of the managed vendor. Takes precedence over forward_endpoint."
+  type        = string
+  default     = ""
+}
+variable "vendor_auth_username" {
+  description = "Basic-auth username (Grafana Cloud instance ID)."
+  type        = string
+  default     = ""
+}
+variable "vendor_token_secret_arn" {
+  description = "SSM SecureString / Secrets Manager ARN holding the vendor token. Injected as env VENDOR_OTLP_TOKEN."
   type        = string
   default     = ""
 }
