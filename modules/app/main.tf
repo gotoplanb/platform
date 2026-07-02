@@ -6,6 +6,16 @@
 
 data "aws_caller_identity" "current" {}
 
+# Shared Alloy config (#19): the per-task sidecar forwards to the per-env gateway (or a debug
+# sink until one is wired). Tail-sampling/redaction/vendor creds live at the gateway, not here.
+module "alloy_sidecar" {
+  source           = "../alloy"
+  role             = "sidecar"
+  grpc_port        = local.otel_grpc_port
+  http_port        = local.otel_http_port
+  forward_endpoint = var.telemetry_gateway_endpoint
+}
+
 locals {
   image = var.image_uri != "" ? var.image_uri : "${var.image_repository_url}:bootstrap"
 
@@ -18,35 +28,8 @@ locals {
   otel_grpc_port   = 4317
   otel_http_port   = 4318
 
-  # Alloy sidecar config (ADR-016 / #18): receive OTLP from the app on localhost, batch, and
-  # forward to the per-env gateway (#19) — or a debug sink when no gateway is wired yet, so the
-  # app→sidecar path is verifiable. Tail-sampling + redaction + vendor creds live at the
-  # gateway (ADR-016 §3), never in the per-task sidecar.
-  alloy_exporter_ref = var.telemetry_gateway_endpoint != "" ? "otelcol.exporter.otlp.gateway.input" : "otelcol.exporter.debug.sink.input"
-  alloy_exporter_block = var.telemetry_gateway_endpoint != "" ? (
-    "otelcol.exporter.otlp \"gateway\" {\n  client {\n    endpoint = \"${var.telemetry_gateway_endpoint}\"\n    tls { insecure = true }\n  }\n}"
-    ) : (
-    "otelcol.exporter.debug \"sink\" {\n  verbosity = \"basic\"\n}"
-  )
-  alloy_config = <<-EOT
-    otelcol.receiver.otlp "in" {
-      grpc { endpoint = "0.0.0.0:${local.otel_grpc_port}" }
-      http { endpoint = "0.0.0.0:${local.otel_http_port}" }
-      output {
-        traces  = [otelcol.processor.batch.b.input]
-        metrics = [otelcol.processor.batch.b.input]
-        logs    = [otelcol.processor.batch.b.input]
-      }
-    }
-    otelcol.processor.batch "b" {
-      output {
-        traces  = [${local.alloy_exporter_ref}]
-        metrics = [${local.alloy_exporter_ref}]
-        logs    = [${local.alloy_exporter_ref}]
-      }
-    }
-    ${local.alloy_exporter_block}
-  EOT
+  # Alloy sidecar config comes from the shared renderer (module.alloy_sidecar, #19) — receive the
+  # app's OTLP on localhost, batch, forward to the per-env gateway (or a debug sink when unwired).
 
   # The escalation state machine (#7) is named var.name; predict its ARN so the app can
   # StartExecution / SendTaskSuccess without a circular dependency on the escalation stack.
@@ -147,7 +130,7 @@ locals {
       # the GA otlp exporter used once a gateway is wired doesn't need it, but the flag is safe.
       entryPoint = ["sh", "-c", "printf '%s' \"$ALLOY_CONFIG\" > /tmp/config.alloy && exec alloy run /tmp/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/tmp/alloy --stability.level=experimental"]
       environment = [
-        { name = "ALLOY_CONFIG", value = local.alloy_config }
+        { name = "ALLOY_CONFIG", value = module.alloy_sidecar.config }
       ]
       portMappings = [
         { containerPort = local.otel_grpc_port, protocol = "tcp" },
