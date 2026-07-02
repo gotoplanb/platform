@@ -63,6 +63,12 @@ variable "tail_sampling" {
   default     = false
 }
 
+variable "dest_traces_only" {
+  description = "True when the destination only accepts traces (Tempo) — drop metrics + logs at the receiver rather than export-and-reject. False for a full LGTM/vendor (Grafana Cloud)."
+  type        = bool
+  default     = false
+}
+
 variable "sampling_percentage" {
   type    = number
   default = 10

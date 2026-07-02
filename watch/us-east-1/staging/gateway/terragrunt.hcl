@@ -41,6 +41,7 @@ inputs = {
   # dependency on ../obs/tempo — Tempo already depends on this gateway's SG, so a reverse
   # dependency would cycle. The name is deterministic (namespace watch-obs.svc + service tempo).
   forward_endpoint = "tempo.watch-obs.svc:4317"
-  tail_sampling    = false
+  tail_sampling    = true # #23: keep errors/slow/writes, sample reads (rehearses prod, ADR-016 §3)
+  dest_traces_only = true # Tempo is traces-only — drop metrics/logs here (they'd be rejected)
   desired_count    = 1
 }

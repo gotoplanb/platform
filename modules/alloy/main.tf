@@ -37,8 +37,19 @@ variable "tail_sampling" {
   default     = false
 }
 variable "sampling_percentage" {
-  type    = number
-  default = 10
+  description = "Gateway tail-sampling: the % of boring reads kept (errors/slow/writes are always kept)."
+  type        = number
+  default     = 10
+}
+variable "slow_threshold_ms" {
+  description = "Gateway tail-sampling: traces slower than this are always kept."
+  type        = number
+  default     = 1000
+}
+variable "dest_traces_only" {
+  description = "True when the destination only accepts traces (e.g. Tempo) — metrics + logs are dropped at the receiver instead of being exported and rejected. False for a full LGTM/vendor (Grafana Cloud)."
+  type        = bool
+  default     = false
 }
 
 # Vendor export (ADR-016 §2: prod → managed vendor, e.g. Grafana Cloud). When set, the gateway
@@ -79,13 +90,53 @@ locals {
   # Traces enter tail-sampling (gateway + enabled) or go straight to batch.
   traces_entry = local.do_sampling ? "otelcol.processor.tail_sampling.ts.input" : "otelcol.processor.batch.b.input"
 
+  # Metrics + logs: forwarded to the destination, unless it's traces-only (Tempo) — then dropped
+  # at the receiver so they aren't exported and rejected with "Unimplemented".
+  non_trace_out = var.dest_traces_only ? "[]" : "[otelcol.processor.batch.b.input]"
+
+  # Incident-tuned tail-sampling (ADR-016 §3 / #23). A trace is KEPT if it matches ANY policy —
+  # so keep everything that matters on an incident tool, and sample only the boring reads:
+  #   errors  — every failed request (a T1 never loses an error trace)
+  #   slow    — every request over the latency floor (the ones you investigate)
+  #   writes  — every state transition: ack / escalate / resolve / intake are all non-GET, and
+  #             writes are rare + high-value, so they're never sampled away
+  #   reads   — a probabilistic slice of the rest (health checks, status page, list/detail GETs)
+  # http.method is the app's semconv (confirmed in Tempo); add http.request.method if it upgrades.
   tail_sampling_raw = <<-EOT
     otelcol.processor.tail_sampling "ts" {
       decision_wait = "10s"
-      policy { name = "errors" type = "status_code"   status_code { status_codes = ["ERROR"] } }
-      policy { name = "slow"   type = "latency"       latency { threshold_ms = 1000 } }
-      policy { name = "sample" type = "probabilistic" probabilistic { sampling_percentage = ${var.sampling_percentage} } }
-      output { traces = [otelcol.processor.batch.b.input] }
+      policy {
+        name = "errors"
+        type = "status_code"
+        status_code {
+          status_codes = ["ERROR"]
+        }
+      }
+      policy {
+        name = "slow"
+        type = "latency"
+        latency {
+          threshold_ms = ${var.slow_threshold_ms}
+        }
+      }
+      policy {
+        name = "writes"
+        type = "string_attribute"
+        string_attribute {
+          key    = "http.method"
+          values = ["POST", "PUT", "PATCH", "DELETE"]
+        }
+      }
+      policy {
+        name = "reads"
+        type = "probabilistic"
+        probabilistic {
+          sampling_percentage = ${var.sampling_percentage}
+        }
+      }
+      output {
+        traces = [otelcol.processor.batch.b.input]
+      }
     }
   EOT
   tail_sampling_block = local.do_sampling ? local.tail_sampling_raw : ""
@@ -96,8 +147,8 @@ locals {
       http { endpoint = "0.0.0.0:${var.http_port}" }
       output {
         traces  = [${local.traces_entry}]
-        metrics = [otelcol.processor.batch.b.input]
-        logs    = [otelcol.processor.batch.b.input]
+        metrics = ${local.non_trace_out}
+        logs    = ${local.non_trace_out}
       }
     }
     ${local.tail_sampling_block}

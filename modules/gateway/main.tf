@@ -33,6 +33,7 @@ module "config" {
   vendor_auth_header_env = local.vendor_auth_env
   tail_sampling          = var.tail_sampling
   sampling_percentage    = var.sampling_percentage
+  dest_traces_only       = var.dest_traces_only
 }
 
 # Vendor Authorization header as a TF-managed SecureString (created from a sensitive var,
