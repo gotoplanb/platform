@@ -51,14 +51,15 @@ variable "vendor_endpoint" {
   default     = ""
 }
 variable "vendor_auth_username" {
-  description = "Basic-auth username (Grafana Cloud instance ID)."
+  description = "Basic-auth username (Grafana Cloud instance ID). Not secret."
   type        = string
   default     = ""
 }
-variable "vendor_token_secret_arn" {
-  description = "SSM SecureString / Secrets Manager ARN holding the vendor token. Injected as env VENDOR_OTLP_TOKEN."
+variable "vendor_token" {
+  description = "The vendor token. Supply via TF_VAR_vendor_token (env-backed, sensitive); Terraform creates the SSM SecureString from it. Value lands in state (encrypted), like the existing random_password secrets."
   type        = string
   default     = ""
+  sensitive   = true
 }
 
 variable "tail_sampling" {

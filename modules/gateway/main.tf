@@ -12,7 +12,9 @@ locals {
   http_port        = 4318
   admin_port       = 12345
   vendor_token_env = "VENDOR_OTLP_TOKEN"
-  has_vendor_token = var.vendor_token_secret_arn != ""
+  # nonsensitive: whether a token is *set* isn't secret (only its value is); without this the
+  # sensitivity propagates into container_definitions and forces a spurious task-def re-render.
+  has_vendor_token = nonsensitive(var.vendor_token != "")
 
   # Follow the app's cost profile (ADR-015): lean → public subnets + public IP (no NAT);
   # ha → private subnets, egress via NAT. A private task with no public IP + no NAT can't
@@ -32,6 +34,17 @@ module "config" {
   vendor_token_env     = local.vendor_token_env
   tail_sampling        = var.tail_sampling
   sampling_percentage  = var.sampling_percentage
+}
+
+# Vendor token as a TF-managed SecureString (created from a sensitive var, mirroring the
+# secrets-appconfig SSM pattern — value from a var instead of random_password since it's
+# externally issued). The gateway task reads it at launch via the secrets block.
+resource "aws_ssm_parameter" "vendor_token" {
+  count  = local.has_vendor_token ? 1 : 0
+  name   = "/${var.name}/telemetry/vendor-token"
+  type   = "SecureString"
+  value  = var.vendor_token
+  tags   = var.tags
 }
 
 resource "aws_ecs_cluster" "this" {
@@ -121,7 +134,7 @@ data "aws_iam_policy_document" "read_token" {
   count = local.has_vendor_token ? 1 : 0
   statement {
     actions   = ["ssm:GetParameters"]
-    resources = [var.vendor_token_secret_arn]
+    resources = [aws_ssm_parameter.vendor_token[0].arn]
   }
   statement {
     actions   = ["kms:Decrypt"]
@@ -166,7 +179,7 @@ resource "aws_ecs_task_definition" "gateway" {
       ]
       # Vendor token (Grafana Cloud) resolved at launch by the execution role — never inlined.
       secrets = local.has_vendor_token ? [
-        { name = local.vendor_token_env, valueFrom = var.vendor_token_secret_arn }
+        { name = local.vendor_token_env, valueFrom = aws_ssm_parameter.vendor_token[0].arn }
       ] : []
       portMappings = [
         { containerPort = local.grpc_port, protocol = "tcp" },
