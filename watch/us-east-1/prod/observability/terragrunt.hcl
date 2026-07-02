@@ -15,7 +15,7 @@ dependency "app" {
   mock_outputs = {
     alb_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000000:loadbalancer/app/watch-prod/abc123"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {

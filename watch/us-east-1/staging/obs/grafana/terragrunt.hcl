@@ -17,7 +17,7 @@ dependency "network" {
     public_subnet_ids  = ["subnet-ma", "subnet-mb"]
     private_subnet_ids = ["subnet-pa", "subnet-pb"]
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "tempo" {
@@ -28,7 +28,7 @@ dependency "tempo" {
     security_group_id = "sg-tempo-mock"
     api_port          = 3200
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {

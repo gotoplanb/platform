@@ -12,14 +12,14 @@ locals {
 dependency "ecr" {
   config_path                             = "../../ecr"
   mock_outputs                            = { repository_url = "000000000000.dkr.ecr.us-east-1.amazonaws.com/watch" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 # Cert ARN from the split cert stack (#35) — no by-hostname lookup, no bootstrap cycle.
 dependency "cert" {
   config_path                             = "../cert"
   mock_outputs                            = { certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/mock" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "network" {
@@ -31,7 +31,7 @@ dependency "network" {
     alb_sg_id          = "sg-alb"
     app_sg_id          = "sg-app"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 # Telemetry gateway (#19): the app sidecar forwards OTLP here; the gateway exports to Grafana
@@ -39,7 +39,7 @@ dependency "network" {
 dependency "gateway" {
   config_path                             = "../gateway"
   mock_outputs                            = { endpoint = "gateway.watch-prod.svc:4317" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "data" {
@@ -53,7 +53,7 @@ dependency "data" {
     valkey_url        = "redis://mock:6379/0"
     kms_key_arn       = "arn:aws:kms:us-east-1:000000000000:key/mock"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "config" {
@@ -67,7 +67,7 @@ dependency "config" {
     appconfig_read_policy_arn       = "arn:aws:iam::000000000000:policy/mock-appconfig"
     secrets_read_policy_arn         = "arn:aws:iam::000000000000:policy/mock-secrets"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {

@@ -9,7 +9,7 @@ include "root" {
 dependency "oidc" {
   config_path                             = "../../../account/github-oidc"
   mock_outputs                            = { oidc_provider_arn = "arn:aws:iam::000000000000:oidc-provider/token.actions.githubusercontent.com" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {

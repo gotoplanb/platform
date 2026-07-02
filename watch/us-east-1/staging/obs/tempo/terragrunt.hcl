@@ -18,13 +18,13 @@ dependency "network" {
     public_subnet_ids  = ["subnet-ma", "subnet-mb"]
     private_subnet_ids = ["subnet-pa", "subnet-pb"]
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "gateway" {
   config_path                             = "../../gateway"
   mock_outputs                            = { security_group_id = "sg-gw-mock" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {

@@ -17,7 +17,7 @@ dependency "network" {
     private_subnet_ids = ["subnet-pa", "subnet-pb"]
     app_sg_id          = "sg-app"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "data" {
@@ -30,7 +30,7 @@ dependency "data" {
     master_secret_arn = "arn:aws:secretsmanager:us-east-1:000000000000:secret:mock"
     kms_key_arn       = "arn:aws:kms:us-east-1:000000000000:key/mock"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "config" {
@@ -40,7 +40,7 @@ dependency "config" {
     intake_webhook_secret_param_name = "/watch/staging/intake-webhook-secret"
     intake_webhook_secret_param_arn  = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-webhook"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {

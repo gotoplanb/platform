@@ -13,13 +13,13 @@ locals {
 dependency "ecr" {
   config_path                             = "../ecr"
   mock_outputs                            = { repository_url = "000000000000.dkr.ecr.us-east-1.amazonaws.com/watch" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "connection" {
   config_path                             = "../connection"
   mock_outputs                            = { connection_arn = "arn:aws:codestar-connections:us-east-1:000000000000:connection/mock" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "staging_app" {
@@ -32,7 +32,7 @@ dependency "staging_app" {
     execution_role_arn      = "arn:aws:iam::000000000000:role/watch-staging-exec"
     task_role_arn           = "arn:aws:iam::000000000000:role/watch-staging-task"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "prod_app" {
@@ -46,19 +46,19 @@ dependency "prod_app" {
     execution_role_arn      = "arn:aws:iam::000000000000:role/watch-prod-exec"
     task_role_arn           = "arn:aws:iam::000000000000:role/watch-prod-task"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "staging_network" {
   config_path                             = "../staging/network"
   mock_outputs                            = { private_subnet_ids = ["subnet-sa", "subnet-sb"], app_sg_id = "sg-staging-app" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 dependency "prod_network" {
   config_path                             = "../prod/network"
   mock_outputs                            = { private_subnet_ids = ["subnet-pa", "subnet-pb"], app_sg_id = "sg-prod-app" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {

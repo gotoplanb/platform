@@ -16,7 +16,7 @@ dependency "network" {
     private_subnet_ids = ["subnet-mock-a", "subnet-mock-b"]
     data_sg_id         = "sg-mock"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 terraform {
