@@ -13,7 +13,8 @@ Watch is an **incident intake & tiered-escalation platform**. This directory is 
 
 Read in order: **[stacks](stacks.md)** (how the IaC is decomposed) → **[runtime](runtime.md)**
 (what serves traffic and how an incident flows) → **[delivery](delivery.md)** (how code reaches
-prod) → **[foundations](foundations.md)** (network, DNS/TLS, security, observability, cost).
+prod) → **[foundations](foundations.md)** (network, DNS/TLS, security, cost) →
+**[observability](observability.md)** (telemetry: sidecar → gateway → backend, tail-sampling).
 
 ## The shape of it
 

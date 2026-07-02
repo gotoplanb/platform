@@ -68,11 +68,16 @@ app ──OTLP──► alloy sidecar (per task) ──► gateway ──► bac
    (the pipeline injects the SHA; the app carries no vendor name, ever)
 ```
 
-Both envs run the same shape (sidecar + gateway + tail-sampling/redaction at the gateway boundary).
-The **only** per-env difference is the gateway's last hop: **staging → the in-AWS Watchtower LGTM
-platform slice**; **prod → a managed vendor** (Watchtower stays out of product prod). The sidecar
-keeps egress off the app's critical path (`essential=false`) — a backend outage never blocks the
-app. (The gateway + Watchtower slice are the open follow-ups #19/#29/#23.)
+Both envs run the same shape (sidecar + gateway + tail-sampling at the gateway boundary). The
+**only** per-env difference is the gateway's last hop: **staging → the in-AWS Tempo slice**
+(`modules/tempo` + `modules/grafana`, co-located in the staging VPC); **prod → Grafana Cloud**
+(managed vendor — Watchtower stays out of product prod). The sidecar keeps egress off the app's
+critical path (`essential=false`) — a backend outage never blocks the app. Tail-sampling is
+incident-tuned: keep all errors/slow/writes, sample reads.
+
+→ The full plane — the shared Alloy renderer, gateway, the staging slice, the Grafana Cloud
+wiring, the tail-sampling policy, and how to operate it — is its own doc:
+**[observability.md](observability.md)**.
 
 ## Cost
 
