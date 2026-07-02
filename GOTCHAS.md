@@ -71,6 +71,19 @@ This file is the "things that cost us an hour" list — read it before the next 
   The dns dependency blocks allow `destroy` in `mock_outputs_allowed_terraform_commands` so
   the target-destroy runs even when `app`/`frontend` state is already gone.
 
+## Teardown
+- **VPC-Lambda ENIs stall `network` destroy 20-40 min.** `make teardown` gets to `<env>/network`
+  fast, then `aws_subnet.private`/`aws_security_group.app` sit in `Still destroying…` for tens of
+  minutes. Cause: the escalation (`record-token`, `commit`) + intake (`authorizer`, `consumer`)
+  Lambdas are **VPC-attached**, and AWS keeps their Hyperplane ENI (`AWS Lambda VPC ENI-<fn>`,
+  `status=in-use`) for 20-40 min *after* the function is deleted — the subnet/SG can't be removed
+  until it's released. **Nothing is wrong; terragrunt retries until it clears — wait it out.**
+  Confirm the blocker: `aws ec2 describe-network-interfaces --filters Name=subnet-id,Values=<subnet>`.
+  Recreate is unaffected (fresh VPC). Expect this every teardown while those Lambdas are VPC-bound.
+- **Killed `make teardown` keeps destroying.** The parallel per-env teardown runs `destroy_env &`
+  subprocesses; killing the foreground `make` doesn't kill them, so a teardown can *finish on its
+  own* after you think you stopped it. Re-running is safe (idempotent), but check state first.
+
 ## Lambda packaging
 - **`/aws/lambda/<fn>` log groups orphan on teardown (fixed, #38).** Lambda auto-creates its
   log group on first invocation, *outside* Terraform — so `destroy` never removed them and every
