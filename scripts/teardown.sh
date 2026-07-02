@@ -35,8 +35,12 @@ BASE="watch/$REGION"
 # prod/dns's CNAME cleanup (below) drives the cloudflare provider; load its token from .env.
 if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ -f .env ]; then set -a; . ./.env; set +a; fi
 
-# dependents -> dependencies (the order we destroy within an env)
-ENV_STACKS=(observability frontend intake escalation app config data network)
+# dependents -> dependencies (the order we destroy within an env). Each stack must be destroyed
+# before the stacks it depends on (dependency blocks only mock for validate/plan, not destroy).
+# Telemetry plane (#19/#29): app + obs/tempo depend on gateway; obs/grafana depends on obs/tempo;
+# gateway/tempo depend on network. Prod has only `gateway` (Grafana Cloud, no slice) — the missing
+# obs/* dirs SKIP cleanly. Order: grafana -> tempo -> app -> gateway -> ... -> network.
+ENV_STACKS=(observability frontend intake escalation obs/grafana obs/tempo app gateway config data network)
 
 WHICH="${1:-both}"; [ $# -gt 0 ] && shift
 WITH_DNS=0; ASSUME_YES=0; PARALLEL=0
