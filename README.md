@@ -33,3 +33,8 @@ backend + OIDC, then is rotated/disabled.
 Bootstrapping. The deep rollout plan and the sequenced work live (for now) in
 `gotoplanb/watch` → `infra/ROLLOUT.md` + the AWS rollout epic; the Terragrunt itself
 will be authored here.
+
+## License
+
+Released under the [MIT No Attribution](LICENSE) license (MIT-0) — permissive, OSI-approved, no
+attribution required.
