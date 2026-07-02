@@ -35,6 +35,13 @@ dependency "network" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+# Telemetry gateway (#19): the app sidecar forwards OTLP here. Applied before the app.
+dependency "gateway" {
+  config_path                             = "../gateway"
+  mock_outputs                            = { endpoint = "gateway.watch-staging.svc:4317" }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 dependency "data" {
   config_path = "../data"
   mock_outputs = {
@@ -98,6 +105,8 @@ inputs = {
   appconfig_profile_name          = dependency.config.outputs.appconfig_profile_name
   appconfig_read_policy_arn       = dependency.config.outputs.appconfig_read_policy_arn
   secrets_read_policy_arn         = dependency.config.outputs.secrets_read_policy_arn
+
+  telemetry_gateway_endpoint = dependency.gateway.outputs.endpoint
 
   desired_count = 1
   autoscale_min = 1
