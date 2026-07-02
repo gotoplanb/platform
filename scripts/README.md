@@ -10,6 +10,7 @@ deploy-frontend).
 | [`create.sh`](create.sh) | `watch-bootstrap` (write) | (Re)creates the estate via `terragrunt run --all apply` (DAG orders + parallelizes). Self-heals a missing `:bootstrap` image; sources `CLOUDFLARE_API_TOKEN` from `.env` for `prod/dns`. |
 | [`db.sh`](db.sh) | `watch-bootstrap` (write) | Runs `migrate`/`seed`/arbitrary command as a one-off Fargate task on the app task def (fresh envs come up on an empty DB). |
 | [`deploy-frontend.sh`](deploy-frontend.sh) | `watch-bootstrap` (write) | Stages the status-page SPA (pins `WATCH_API` to the env's API origin), `s3 sync`s to the frontend bucket, invalidates CloudFront. Terraform makes the bucket/distro but not its contents. |
+| [`deploy.sh`](deploy.sh) | `watch-bootstrap` (write) | Promotes latest `main` off the `:bootstrap` seed: starts a pipeline run (same path as a push, #24), waits through Build → DeployStaging → DAST, stops at the prod-approval gate. |
 | [`teardown.sh`](teardown.sh) | `watch-bootstrap` (write) | Destroys the per-env stacks (and the shared pipeline) dependents-first. Keeps the ~$0 foundation by default — state backend, `ecr`, `prod/dns` cert, `account/*`, `github/*` — but drops the `watch`/`status` CNAMEs so a later create is clean. |
 | [`sweep.sh`](sweep.sh) | `watch-ro` (read-only) | Lists *billable* leftovers in the region and exits nonzero if any remain. Excludes the intentionally-kept foundation (tf-state, ECR, cert). |
 
@@ -19,8 +20,10 @@ make live          # = create + migrate ENV=prod + seed ENV=prod + deploy-fronte
 make sweep         # (after a later teardown) confirm nothing billable lingers
 ```
 `create` brings up both envs on the kept `:bootstrap` image; `migrate`/`seed` populate the
-fresh prod DB; `deploy-frontend` publishes the status page. The app is then live on
-`watch.davestanton.com`; push code through the pipeline to promote a real build by digest.
+fresh prod DB; `deploy-frontend` publishes the status page; **`deploy`** then promotes latest
+`main` through the pipeline (Build → DeployStaging → DAST) and pauses at the prod-approval gate
+— so a full `make live` leaves the app on real code, not the seed image, with prod one
+approval away.
 
 ## Nightly / between-release teardown (ADR-019: staging is ephemeral)
 ```sh
