@@ -46,6 +46,10 @@ inputs = {
   vendor_endpoint    = get_env("OTEL_EXPORTER_OTLP_ENDPOINT", "")
   vendor_auth_header = replace(trimprefix(get_env("OTEL_EXPORTER_OTLP_HEADERS", ""), "Authorization="), "%20", " ")
 
-  # Tail-sampling (ADR-016 §3 / #23) is a gated var, left off pending enablement.
+  # Tail-sampling (ADR-016 §3 / #23): keep errors/slow/writes, sample reads — cuts vendor egress
+  # while never dropping an incident-relevant trace. dest_traces_only stays false (Grafana Cloud
+  # is full LGTM: traces are sampled, metrics + logs pass through).
+  tail_sampling = true
+
   desired_count = 1
 }
