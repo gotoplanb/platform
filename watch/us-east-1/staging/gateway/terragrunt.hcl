@@ -37,8 +37,10 @@ inputs = {
   private_subnet_ids = dependency.network.outputs.private_subnet_ids
   app_sg_id          = dependency.network.outputs.app_sg_id
 
-  # No backend wired yet (#29) → debug sink. Warm-minimal: one task while telemetry is exercised.
-  forward_endpoint = ""
+  # Export to the Tempo trace backend (#29, obs/tempo). Hardcoded Cloud Map DNS rather than a
+  # dependency on ../obs/tempo — Tempo already depends on this gateway's SG, so a reverse
+  # dependency would cycle. The name is deterministic (namespace watch-obs.svc + service tempo).
+  forward_endpoint = "tempo.watch-obs.svc:4317"
   tail_sampling    = false
   desired_count    = 1
 }

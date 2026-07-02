@@ -51,7 +51,8 @@ resource "aws_service_discovery_service" "gateway" {
       ttl  = 15
     }
   }
-  health_check_custom_config {}
+  # No health_check_custom_config: an empty block reads back as absent (perpetual ForceNew diff),
+  # and MULTIVALUE routing doesn't need one.
   tags = var.tags
 }
 
@@ -178,4 +179,9 @@ resource "aws_ecs_service" "gateway" {
 output "endpoint" {
   description = "gRPC endpoint the app sidecars forward OTLP to."
   value       = "gateway.${aws_service_discovery_private_dns_namespace.this.name}:${local.grpc_port}"
+}
+
+output "security_group_id" {
+  description = "The gateway tasks' SG — the telemetry backend allows this on its OTLP ingress."
+  value       = aws_security_group.gateway.id
 }
