@@ -33,7 +33,7 @@ members; with blank IDs, `plan` on the live estate shows **no changes**.
 The estate is disposable, so the cutover is a **re-lay**, not a data migration. Order matters:
 
 1. **Teardown the current estate in management** — `make teardown` with `accounts.hcl` still blank
-   (targets `614933206631`). Wait out the VPC/ENI drain; `scripts/sweep.sh` → clean.
+   (blank IDs target the current/management account). Wait out the VPC/ENI drain; `scripts/sweep.sh` → clean.
 2. **Fill `.env`** — set `WATCH_NONPROD_ACCOUNT_ID` + `WATCH_PROD_ACCOUNT_ID` (from the Org) and
    `source` it. `accounts.hcl` reads them via `get_env`; this activates cross-account routing.
 3. **Cross-account prerequisites** (one-time, in `watch-nonprod`): the shared ECR repo policy must
