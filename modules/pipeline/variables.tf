@@ -104,6 +104,12 @@ variable "deploy_config_name" {
   default = "CodeDeployDefault.ECSLinear10PercentEvery1Minutes"
 }
 
+variable "prod_deploy_role_arn" {
+  description = "Cross-account deploy role in watch-prod that the DeployProd action assumes (ADR-020). Empty = single-account (prod deploy stays in this account's CodeDeploy — legacy)."
+  type        = string
+  default     = ""
+}
+
 variable "log_retention_days" {
   type    = number
   default = 14

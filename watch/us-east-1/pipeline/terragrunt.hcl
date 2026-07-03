@@ -73,6 +73,10 @@ inputs = {
   connection_arn     = dependency.connection.outputs.connection_arn
   ecr_repository_url = dependency.ecr.outputs.repository_url
 
+  # Cross-account prod deploy (ADR-020): the DeployProd action assumes this predictable role in
+  # watch-prod (created by prod/deploy). Empty when the split isn't cut over -> same-account legacy.
+  prod_deploy_role_arn = get_env("WATCH_PROD_ACCOUNT_ID", "") != "" ? "arn:aws:iam::${get_env("WATCH_PROD_ACCOUNT_ID", "")}:role/watch-prod-deploy" : ""
+
   staging = {
     cluster_name            = dependency.staging_app.outputs.cluster_name
     service_name            = dependency.staging_app.outputs.service_name

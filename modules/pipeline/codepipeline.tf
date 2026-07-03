@@ -23,8 +23,10 @@ resource "aws_iam_role_policy" "pipeline" {
   role = aws_iam_role.pipeline.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       { Effect = "Allow", Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:GetBucketLocation"], Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"] },
+      # The artifact CMK: the pipeline generates+reads data keys to write/read the artifact.
+      { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = aws_kms_key.artifacts.arn },
       { Effect = "Allow", Action = ["codestar-connections:UseConnection"], Resource = var.connection_arn },
       { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = [aws_codebuild_project.this.arn, aws_codebuild_project.dast.arn, aws_codebuild_project.smoke.arn] },
       {
@@ -38,12 +40,16 @@ resource "aws_iam_role_policy" "pipeline" {
       },
       { Effect = "Allow", Action = ["ecs:RegisterTaskDefinition", "ecs:DescribeServices", "ecs:DescribeTaskDefinition"], Resource = "*" },
       {
+        # Staging only — prod's ECS roles are PassRole'd by the cross-account deploy role in watch-prod.
         Effect    = "Allow"
         Action    = ["iam:PassRole"]
-        Resource  = [var.staging.execution_role_arn, var.staging.task_role_arn, var.prod.execution_role_arn, var.prod.task_role_arn]
+        Resource  = [var.staging.execution_role_arn, var.staging.task_role_arn]
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
-    ]
+      ], var.prod_deploy_role_arn != "" ? [
+      # Cross-account (ADR-020): assume the deploy role in watch-prod for the DeployProd action.
+      { Effect = "Allow", Action = ["sts:AssumeRole"], Resource = var.prod_deploy_role_arn },
+    ] : [])
   })
 }
 
@@ -55,6 +61,10 @@ resource "aws_codepipeline" "this" {
   artifact_store {
     location = aws_s3_bucket.artifacts.bucket
     type     = "S3"
+    encryption_key {
+      id   = aws_kms_key.artifacts.arn
+      type = "KMS"
+    }
   }
 
   stage {
@@ -98,8 +108,8 @@ resource "aws_codepipeline" "this" {
       version         = "1"
       input_artifacts = ["build"]
       configuration = {
-        ApplicationName                = aws_codedeploy_app.this["staging"].name
-        DeploymentGroupName            = aws_codedeploy_deployment_group.this["staging"].deployment_group_name
+        ApplicationName                = module.staging.app_name
+        DeploymentGroupName            = module.staging.deployment_group_name
         TaskDefinitionTemplateArtifact = "build"
         TaskDefinitionTemplatePath     = "taskdef-staging.json"
         AppSpecTemplateArtifact        = "build"
@@ -157,9 +167,13 @@ resource "aws_codepipeline" "this" {
       provider        = "CodeDeployToECS"
       version         = "1"
       input_artifacts = ["build"]
+      # Cross-account (ADR-020): the action assumes the deploy role in watch-prod, which owns the
+      # prod CodeDeploy app/DG. Named literally (watch-prod) — created by the prod/deploy stack, no
+      # reverse dependency. role_arn is the action-level cross-account arg (empty => same-account).
+      role_arn = var.prod_deploy_role_arn != "" ? var.prod_deploy_role_arn : null
       configuration = {
-        ApplicationName                = aws_codedeploy_app.this["prod"].name
-        DeploymentGroupName            = aws_codedeploy_deployment_group.this["prod"].deployment_group_name
+        ApplicationName                = "${var.name}-prod"
+        DeploymentGroupName            = "${var.name}-prod"
         TaskDefinitionTemplateArtifact = "build"
         TaskDefinitionTemplatePath     = "taskdef-prod.json"
         AppSpecTemplateArtifact        = "build"

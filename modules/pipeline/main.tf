@@ -7,6 +7,10 @@ data "aws_caller_identity" "current" {}
 
 locals {
   envs = { staging = var.staging, prod = var.prod }
+  # The migration hook runs `ecs run-task` against the env's cluster. Prod's cluster is in
+  # watch-prod (cross-account, ADR-020) — deferred, so only staging gets an in-pipeline hook; prod
+  # migrations run manually via the cross-account db.sh until the prod hook moves to watch-prod.
+  hook_envs = { staging = var.staging }
 }
 
 # ---- Artifact bucket --------------------------------------------------------
@@ -25,12 +29,53 @@ resource "aws_s3_bucket_public_access_block" "artifacts" {
   restrict_public_buckets = true
 }
 
+# Customer-managed key for the artifact bucket. Cross-account artifact decrypt (the prod deploy
+# role in watch-prod, ADR-020) REQUIRES a CMK — SSE-S3 can't be shared. The key policy grants the
+# prod ACCOUNT root (not the specific role, which doesn't exist yet → invalid principal); the prod
+# deploy role's own IAM policy carries the kms:Decrypt half, and cross-account needs both.
+locals {
+  prod_account_id = var.prod_deploy_role_arn != "" ? element(split(":", var.prod_deploy_role_arn), 4) : ""
+}
+
+resource "aws_kms_key" "artifacts" {
+  description             = "${var.name} pipeline artifact encryption"
+  deletion_window_in_days = 7
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      {
+        Sid       = "AccountRoot"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      }
+      ], local.prod_account_id != "" ? [
+      {
+        Sid       = "CrossAccountArtifactRead"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${local.prod_account_id}:root" }
+        Action    = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource  = "*"
+      }
+    ] : [])
+  })
+  tags = var.tags
+}
+
+resource "aws_kms_alias" "artifacts" {
+  name          = "alias/${var.name}-pipeline"
+  target_key_id = aws_kms_key.artifacts.key_id
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "artifacts" {
   bucket = aws_s3_bucket.artifacts.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.artifacts.arn
     }
+    bucket_key_enabled = true
   }
 }
 
@@ -58,20 +103,20 @@ data "aws_iam_policy_document" "hook_assume" {
 }
 
 resource "aws_iam_role" "hook" {
-  for_each           = local.envs
+  for_each           = local.hook_envs
   name               = "${var.name}-${each.key}-deploy-hook"
   assume_role_policy = data.aws_iam_policy_document.hook_assume.json
   tags               = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "hook_basic" {
-  for_each   = local.envs
+  for_each   = local.hook_envs
   role       = aws_iam_role.hook[each.key].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 resource "aws_iam_role_policy" "hook" {
-  for_each = local.envs
+  for_each = local.hook_envs
   name     = "${var.name}-${each.key}-deploy-hook"
   role     = aws_iam_role.hook[each.key].id
   policy = jsonencode({
@@ -92,14 +137,14 @@ resource "aws_iam_role_policy" "hook" {
 # Declared so Lambda reuses it (instead of auto-creating one outside TF) and teardown removes it
 # — otherwise /aws/lambda/<fn> orphans on every destroy (platform#38).
 resource "aws_cloudwatch_log_group" "hook" {
-  for_each          = local.envs
+  for_each          = local.hook_envs
   name              = "/aws/lambda/${var.name}-${each.key}-deploy-hook"
   retention_in_days = var.log_retention_days
   tags              = var.tags
 }
 
 resource "aws_lambda_function" "hook" {
-  for_each      = local.envs
+  for_each      = local.hook_envs
   function_name = "${var.name}-${each.key}-deploy-hook"
   role          = aws_iam_role.hook[each.key].arn
   runtime       = "python3.12"

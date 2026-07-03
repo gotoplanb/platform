@@ -98,8 +98,10 @@ resource "aws_codebuild_project" "this" {
       value = aws_lambda_function.hook["staging"].function_name
     }
     environment_variable {
-      name  = "PROD_HOOK"
-      value = aws_lambda_function.hook["prod"].function_name
+      name = "PROD_HOOK"
+      # Prod's migration hook is deferred (cross-account, ADR-020) — empty so the buildspec renders
+      # appspec-prod without a BeforeAllowTraffic hook; prod migrations run via db.sh for now.
+      value = ""
     }
     environment_variable {
       name  = "LAMBDA_ENVS"
