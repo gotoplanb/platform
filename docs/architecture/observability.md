@@ -33,7 +33,7 @@ How telemetry flows out of Watch, where it lands, and how it's operated. The **w
 3. **Gateway → destination.** One shared collector per env batches, (optionally) tail-samples
    traces, and exports to the env's backend. **This last hop is the only per-env difference.**
 
-Everything is Terragrunt/OpenTofu in the watch account (`614933206631`, us-east-1).
+Everything is Terragrunt/OpenTofu in the watch account (us-east-1).
 
 ---
 
