@@ -7,8 +7,28 @@
 #   TG_TF_PATH=tofu terragrunt ...
 
 locals {
-  region     = "us-east-1"
-  account_id = get_aws_account_id()
+  region  = "us-east-1"
+  current = get_aws_account_id()
+
+  # Multi-account routing (ADR-020). Map each stack (by path) to its target account; blank member
+  # ids in accounts.hcl fall back to the current account, so this is a NO-OP for the single-account
+  # estate until the ids are filled.
+  acct = read_terragrunt_config(find_in_parent_folders("accounts.hcl")).locals
+  rel  = path_relative_to_include()
+  want = (
+    startswith(local.rel, "account/organization")     ? local.acct.management_account_id :
+    startswith(local.rel, "watch/us-east-1/prod/")     ? local.acct.prod_account_id :
+    startswith(local.rel, "watch/us-east-1/staging/")  ? local.acct.nonprod_account_id :
+    local.acct.nonprod_account_id # foundation (ecr/pipeline/connection/ci-trigger/account/*, github/*) -> nonprod
+  )
+  target = local.want != "" ? local.want : local.current
+  cross  = local.target != local.current
+
+  # Base creds live in the management account and assume OrganizationAccountAccessRole into the
+  # target member account. State stays centralized in the management bucket for now (per-member
+  # state buckets are a later hardening — see ADR-020); the bucket keys off the current account.
+  account_id      = local.current
+  assume_role_block = local.cross ? "assume_role { role_arn = \"arn:aws:iam::${local.target}:role/OrganizationAccountAccessRole\" }" : ""
 }
 
 remote_state {
@@ -33,7 +53,9 @@ generate "provider" {
   if_exists = "overwrite_terragrunt"
   contents  = <<-EOF
     provider "aws" {
-      region = "${local.region}"
+      region              = "${local.region}"
+      allowed_account_ids = ["${local.target}"]
+      ${local.assume_role_block}
       default_tags {
         tags = {
           project    = "watch"
