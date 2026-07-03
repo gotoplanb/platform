@@ -80,6 +80,16 @@ This file is the "things that cost us an hour" list — read it before the next 
   until it's released. **Nothing is wrong; terragrunt retries until it clears — wait it out.**
   Confirm the blocker: `aws ec2 describe-network-interfaces --filters Name=subnet-id,Values=<subnet>`.
   Recreate is unaffected (fresh VPC). Expect this every teardown while those Lambdas are VPC-bound.
+- **Step Functions delete times out (5 min) → strands the escalation Lambdas → strands the VPC.**
+  `staging/escalation` destroy fails with `waiting for Step Functions State Machine … delete:
+  timeout … (last state: 'DELETING', timeout: 5m0s)`. A Standard state machine with **running
+  executions** (the seeded incidents' escalation timers) takes longer than tofu's 5-min delete
+  timeout to drain; when that errors, terraform stops **before** deleting the `record-token`/`commit`
+  Lambdas, whose ENIs then hold the VPC (compounding with the ENI-lag gotcha above → 2-3 teardown
+  passes). AWS finishes the SM delete async, so a re-run gets past it. **Real fix (TODO):** stop
+  running executions before destroying the SM — a pre-destroy step (`aws stepfunctions
+  stop-execution` for each running execution) in the escalation module / teardown — so the SM
+  deletes fast and the whole chain (SM → Lambdas → ENIs → VPC) completes in **one** pass.
 - **Killed `make teardown` keeps destroying.** The parallel per-env teardown runs `destroy_env &`
   subprocesses; killing the foreground `make` doesn't kill them, so a teardown can *finish on its
   own* after you think you stopped it. Re-running is safe (idempotent), but check state first.
