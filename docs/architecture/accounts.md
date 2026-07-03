@@ -6,9 +6,11 @@ member accounts along the plane boundary.
 
 | Plane | Account | ID | Holds |
 |---|---|---|---|
-| management (clean) | Dave Stanton | `614933206631` | the Org, consolidated billing, `account/organization`, centralized TF state (for now) |
-| build / CI / dogfood | watch-platform | `176980002992` | staging + platform foundation (ECR, pipeline, connection, ci-trigger, Watchtower/Sonar), budgets |
-| product prod | Watch Prod | `208166434910` | prod app/data/escalation/intake/frontend/gateway/dns/cert/observability |
+| management (clean) | Dave Stanton | *(current account; via `get_aws_account_id()`)* | the Org, consolidated billing, `account/organization`, centralized TF state (for now) |
+| build / CI / dogfood | watch-platform | `$WATCH_NONPROD_ACCOUNT_ID` (.env) | staging + platform foundation (ECR, pipeline, connection, ci-trigger, Watchtower/Sonar), budgets |
+| product prod | Watch Prod | `$WATCH_PROD_ACCOUNT_ID` (.env) | prod app/data/escalation/intake/frontend/gateway/dns/cert/observability |
+
+(Account IDs live in `~/platform/.env`, not the repo — it's public. See `.env.example`.)
 
 ## How the seam works (`terragrunt.hcl` + `accounts.hcl`)
 
@@ -32,8 +34,8 @@ The estate is disposable, so the cutover is a **re-lay**, not a data migration. 
 
 1. **Teardown the current estate in management** — `make teardown` with `accounts.hcl` still blank
    (targets `614933206631`). Wait out the VPC/ENI drain; `scripts/sweep.sh` → clean.
-2. **Fill `accounts.hcl`** — uncomment `nonprod_account_id = "176980002992"` and
-   `prod_account_id = "208166434910"`. This activates cross-account routing.
+2. **Fill `.env`** — set `WATCH_NONPROD_ACCOUNT_ID` + `WATCH_PROD_ACCOUNT_ID` (from the Org) and
+   `source` it. `accounts.hcl` reads them via `get_env`; this activates cross-account routing.
 3. **Cross-account prerequisites** (one-time, in `watch-nonprod`): the shared ECR repo policy must
    grant `watch-prod` pull, and the pipeline needs a **cross-account CodeDeploy/ECS deploy role** in
    `watch-prod` (+ shared artifact-bucket KMS). This is the ADR-017 crux — build/verify before the

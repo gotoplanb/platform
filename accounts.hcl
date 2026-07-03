@@ -1,20 +1,13 @@
-# Account registry for the multi-account split (ADR-020). Read by the root terragrunt.hcl to
-# route each stack to its target AWS account via provider assume-role. Blank member ids ==
-# "not created yet" -> the root falls back to the current account, so the single-account estate
-# keeps working unchanged until these are filled.
+# Account registry for the multi-account split (ADR-020). Read by the root terragrunt.hcl to route
+# each stack to its target AWS account via provider assume-role.
 #
-# Fill nonprod/prod AFTER applying account/organization (from its outputs):
-#   ( cd account/organization && TG_TF_PATH=tofu terragrunt output account_ids )
+# The IDs live in ~/platform/.env (gitignored), NOT here — the repo is public, and this keeps to
+# the "never hardcode an account id" convention (the root reads the management account via
+# get_aws_account_id()). Blank member ids == "not created yet" -> the root falls back to the
+# current account, so the single-account estate keeps working until .env is populated at cutover.
 #
-# The base credentials (AWS_PROFILE) must be an identity in the MANAGEMENT account; the root
-# provider then assume-roles OrganizationAccountAccessRole into the target member account.
+# In .env:  WATCH_NONPROD_ACCOUNT_ID=...  WATCH_PROD_ACCOUNT_ID=...  (source before running)
 locals {
-  management_account_id = "614933206631" # the current account; owns the Org (kept clean) — "Dave Stanton"
-  # Accounts exist (created 2026-07-03). Fill these two AT CUTOVER — they are intentionally blank
-  # now so the running single-account estate is untouched. Filling them activates cross-account
-  # routing on the NEXT apply, so only do it as step 2 of the cutover (teardown mgmt → fill → live):
-  #   nonprod_account_id = "176980002992"  # "watch-platform" (staging + platform/build plane)
-  #   prod_account_id    = "208166434910"  # "Watch Prod" (product-prod plane)
-  nonprod_account_id = ""
-  prod_account_id    = ""
+  nonprod_account_id = get_env("WATCH_NONPROD_ACCOUNT_ID", "") # watch-platform (staging + platform/build)
+  prod_account_id    = get_env("WATCH_PROD_ACCOUNT_ID", "")    # watch-prod (product-prod)
 }
