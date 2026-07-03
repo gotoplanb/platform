@@ -17,6 +17,21 @@ REGION="${AWS_REGION:-us-east-1}"
 NOWAIT=0
 for a in "$@"; do case "$a" in --no-wait) NOWAIT=1 ;; *) echo "unknown flag: $a" >&2; exit 2 ;; esac; done
 
+# Pre-flight: as the last step of `make live`, create.sh has just triggered CodeDeploy to place
+# the initial (bootstrap) tasks. If we StartPipelineExecution while that deployment is still in
+# flight, DeployStaging fails "Another deployment ... already in progress." Wait for both DGs to
+# go idle first (bounded ~5 min; then proceed and let the pipeline surface any real problem).
+for app in watch-staging watch-prod; do
+  dg=$(aws deploy list-deployment-groups --region "$REGION" --application-name "$app" --query 'deploymentGroups[0]' --output text 2>/dev/null)
+  [ -n "$dg" ] && [ "$dg" != "None" ] || continue
+  for _ in $(seq 1 30); do
+    busy=$(aws deploy list-deployments --region "$REGION" --application-name "$app" --deployment-group-name "$dg" \
+      --include-only-statuses Created Queued InProgress Ready --query 'length(deployments)' --output text 2>/dev/null)
+    [ "${busy:-0}" = 0 ] && break
+    echo "  waiting for an in-flight CodeDeploy deployment on $app to finish..."; sleep 10
+  done
+done
+
 EID=$(aws codepipeline start-pipeline-execution --region "$REGION" --name watch --query pipelineExecutionId --output text 2>&1)
 [ -n "$EID" ] && [ "$EID" != "None" ] || { echo "failed to start pipeline: $EID" >&2; exit 1; }
 echo "Started pipeline execution: $EID"

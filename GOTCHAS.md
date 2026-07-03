@@ -84,6 +84,17 @@ This file is the "things that cost us an hour" list — read it before the next 
   subprocesses; killing the foreground `make` doesn't kill them, so a teardown can *finish on its
   own* after you think you stopped it. Re-running is safe (idempotent), but check state first.
 
+## Create / `make live`
+- **`make live` deploy races create's initial CodeDeploy placement.** `create.sh` brings the app
+  up by triggering a CodeDeploy deployment (bootstrap image); `make live`'s final `deploy` step
+  then `StartPipelineExecution`, whose DeployStaging is another CodeDeploy deployment to the same
+  group → **"Another deployment to the AWS CodeDeploy deployment group watch-staging is already in
+  progress"** → `make: *** [live] Error 1`. The estate is actually fine (apps 200, everything
+  created) — only the promote raced. Fixed: `deploy.sh` now waits for both deployment groups to go
+  idle before starting the pipeline. If you hit it on an older checkout, just retry the stage:
+  `aws codepipeline retry-stage-execution --pipeline-name watch --stage-name DeployStaging
+  --pipeline-execution-id <id> --retry-mode FAILED_ACTIONS` (reuses the built image, no rebuild).
+
 ## Lambda packaging
 - **`/aws/lambda/<fn>` log groups orphan on teardown (fixed, #38).** Lambda auto-creates its
   log group on first invocation, *outside* Terraform — so `destroy` never removed them and every
