@@ -11,8 +11,17 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=lib/xacct.sh
+. "$ROOT/scripts/lib/xacct.sh"
+[ -n "${WATCH_NONPROD_ACCOUNT_ID:-}${WATCH_PROD_ACCOUNT_ID:-}" ] || { [ -f .env ] && { set -a; . ./.env; set +a; }; }
 export AWS_PROFILE="${AWS_PROFILE:-watch-bootstrap}"
 REGION="${AWS_REGION:-us-east-1}"
+
+# The pipeline + staging CodeDeploy live in the nonprod (platform/build) account (ADR-020); assume
+# into it for StartPipelineExecution + the pre-flight. (watch-prod's CodeDeploy is in watch-prod —
+# the list-deployment-groups call below just returns nothing for it here and skips, which is fine:
+# prod deploys via the gated cross-account promote, not create's initial placement.)
+xacct_assume "$(xacct_account_for foundation)"
 
 NOWAIT=0
 for a in "$@"; do case "$a" in --no-wait) NOWAIT=1 ;; *) echo "unknown flag: $a" >&2; exit 2 ;; esac; done

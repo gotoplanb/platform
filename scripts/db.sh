@@ -16,6 +16,9 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=lib/xacct.sh
+. "$ROOT/scripts/lib/xacct.sh"
+[ -n "${WATCH_NONPROD_ACCOUNT_ID:-}${WATCH_PROD_ACCOUNT_ID:-}" ] || { [ -f .env ] && { set -a; . ./.env; set +a; }; }
 export TG_TF_PATH="${TG_TF_PATH:-tofu}"
 export AWS_PROFILE="${AWS_PROFILE:-watch-bootstrap}"
 REGION="${AWS_REGION:-us-east-1}"
@@ -41,6 +44,10 @@ SG=$(cd "$BASE/$ENV/network"      && terragrunt output -raw app_sg_id)
 SUBNETS_JSON=$(cd "$BASE/$ENV/network" && terragrunt output -json private_subnet_ids)
 NETCFG=$(printf '{"awsvpcConfiguration":{"subnets":%s,"securityGroups":["%s"],"assignPublicIp":"DISABLED"}}' "$SUBNETS_JSON" "$SG")
 OVERRIDES=$(printf '{"containerOverrides":[{"name":"%s","command":%s}]}' "$CONTAINER" "$CMD_JSON")
+
+# State was read with the base (management) creds above; the ECS cluster lives in the env's member
+# account (ADR-020), so assume into it for the run-task + waits + logs. No-op in single-account mode.
+xacct_assume "$(xacct_account_for "$ENV")"
 
 echo "Running on $ENV: ${CMD[*]}"
 ARN=$(aws ecs run-task --region "$REGION" --cluster "$CLUSTER" --task-definition "$FAMILY" \

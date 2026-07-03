@@ -14,6 +14,9 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=lib/xacct.sh
+. "$ROOT/scripts/lib/xacct.sh"
+[ -n "${WATCH_NONPROD_ACCOUNT_ID:-}${WATCH_PROD_ACCOUNT_ID:-}" ] || { [ -f .env ] && { set -a; . ./.env; set +a; }; }
 export TG_TF_PATH="${TG_TF_PATH:-tofu}"
 export AWS_PROFILE="${AWS_PROFILE:-watch-bootstrap}"
 REGION="${AWS_REGION:-us-east-1}"
@@ -34,6 +37,10 @@ BUCKET=$(cd "$BASE/$ENV/frontend" && terragrunt output -raw bucket_name 2>/dev/n
 DIST=$(cd "$BASE/$ENV/frontend"   && terragrunt output -raw distribution_id 2>/dev/null)
 [ -n "$BUCKET" ] && [ -n "$DIST" ] || { echo "could not read bucket/distribution outputs" >&2; exit 1; }
 echo "  bucket=$BUCKET  distribution=$DIST  api=$API_ORIGIN"
+
+# The bucket + CloudFront live in the env's member account (ADR-020); state was read with the base
+# (management) creds above, now assume into the member for the s3 sync + invalidation.
+xacct_assume "$(xacct_account_for "$ENV")"
 
 # Stage: copy the page and pin WATCH_API to this env's API origin (dev default is :8010).
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/watch-frontend.XXXXXX")
