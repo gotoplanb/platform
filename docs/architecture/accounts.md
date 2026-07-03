@@ -28,22 +28,37 @@ The root config maps each stack (by path) to a **target account** and generates 
 Verified 2026-07-03: `OrganizationAccountAccessRole` is assumable from `watch-bootstrap` into both
 members; with blank IDs, `plan` on the live estate shows **no changes**.
 
-## Cutover (run deliberately — this moves the estate to the members)
+## RESUME POINT (checkpoint 2026-07-03)
 
-The estate is disposable, so the cutover is a **re-lay**, not a data migration. Order matters:
+Everything below is staged; the running estate is being torn down as a checkpoint. State of play:
+- **Done + committed, gated (no effect until `.env` is filled):** the provider seam (root
+  `terragrunt.hcl` + `accounts.hcl`, assume-role proven into both members) and the ECR
+  cross-account pull policy.
+- **In flight:** `make teardown` of the current single-account estate (tmux `watch:shell`, log
+  `scratchpad/teardown-cutover.log`). Wait for it + `scripts/sweep.sh` → clean.
+- **Not built yet:** the cross-account pipeline refactor — the atomic 5-step unit in the *build
+  spec* section above (artifact KMS CMK, extract `modules/codedeploy`, `prod/deploy` stack +
+  cross-account role, `DeployProd` action `role_arn`, pipeline inputs).
 
-1. **Teardown the current estate in management** — `make teardown` with `accounts.hcl` still blank
-   (blank IDs target the current/management account). Wait out the VPC/ENI drain; `scripts/sweep.sh` → clean.
-2. **Fill `.env`** — set `WATCH_NONPROD_ACCOUNT_ID` + `WATCH_PROD_ACCOUNT_ID` (from the Org) and
-   `source` it. `accounts.hcl` reads them via `get_env`; this activates cross-account routing.
-3. **Cross-account prerequisites** (one-time, in `watch-nonprod`): the shared ECR repo policy must
-   grant `watch-prod` pull, and the pipeline needs a **cross-account CodeDeploy/ECS deploy role** in
-   `watch-prod` (+ shared artifact-bucket KMS). This is the ADR-017 crux — build/verify before the
-   first prod promote.
-4. **`make live`** — stands the foundation + staging up in `watch-platform` and prod up in
-   `watch-prod`, provider assume-role per stack. Verify endpoints + the obs plane as usual.
+**Owner note:** state is disposable and prod need not stay up (daily build/teardown). So this is a
+**clean re-lay, not a migration** — no state preservation, no backward-compat needed.
 
-Roll back by re-blanking `accounts.hcl` (everything routes to management again).
+## Cutover (the clean re-lay)
+
+1. **Teardown** the current estate (in flight). Optionally destroy the management state bucket +
+   `bootstrap` too — nothing needs to survive.
+2. **Per-member state buckets** — run `bootstrap` (with an `assume_role` into each member;
+   see below) to create `watch-tfstate-<member>` + `watch-tflocks` in **watch-platform** and
+   **watch-prod**. Then switch the root `remote_state` off centralized-in-management to per-member
+   (ADR-020 §3 ideal — the centralized fallback was only for a live migration we no longer need).
+3. **Build the cross-account pipeline refactor** — the 5 steps in the build spec above.
+4. **Fill `.env`** — `WATCH_NONPROD_ACCOUNT_ID` + `WATCH_PROD_ACCOUNT_ID`; `source` it (activates
+   the seam).
+5. **`make live`** — foundation + staging → watch-platform, prod → watch-prod (provider
+   assume-role per stack). Verify endpoints + obs plane; run a promote to exercise the
+   cross-account deploy and iterate on the IAM/KMS (2-3 rounds is normal).
+
+Roll back at any point by re-blanking `.env` (everything routes to the current account again).
 
 ## Cross-account pipeline deploy — build spec (Option A, ADR-017)
 
