@@ -1,6 +1,7 @@
-# DNS records for watch / prod / us-east-1 (platform#13/#35). The app+status subdomain CNAMEs
-# -> ALB / CloudFront; the ACM cert now lives in ../cert (split to match staging + break the
-# bootstrap cycle). Only watch./status. records — never the apex. Needs CLOUDFLARE_API_TOKEN.
+# API DNS record for watch / prod / us-east-1 (platform#13/#35). watch.<domain> CNAME -> ALB.
+# The status.<domain> -> CloudFront record is a SEPARATE stack (../dns-status) so the CloudFront
+# new-account verification hold (ADR-020) can't block the API hostname. ACM cert lives in ../cert.
+# Only the watch. record here — never the apex. Needs CLOUDFLARE_API_TOKEN.
 
 include "root" {
   path = find_in_parent_folders("terragrunt.hcl")
@@ -29,21 +30,14 @@ dependency "app" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
-dependency "frontend" {
-  config_path                             = "../frontend"
-  mock_outputs                            = { distribution_domain_name = "dmock.cloudfront.net" }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
-}
-
 terraform {
   source = "${get_repo_root()}//modules/dns-records" # cert split out to ../cert (#35)
 }
 
 inputs = {
-  zone_name       = "davestanton.com"
-  app_hostname    = "watch.davestanton.com"
-  status_hostname = "status.davestanton.com"
+  zone_name    = "davestanton.com"
+  app_hostname = "watch.davestanton.com"
 
-  alb_dns_name      = dependency.app.outputs.alb_dns_name
-  cloudfront_domain = dependency.frontend.outputs.distribution_domain_name
+  alb_dns_name = dependency.app.outputs.alb_dns_name
+  # cloudfront_domain intentionally unset -> only the app record here (status is ../dns-status).
 }

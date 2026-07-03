@@ -27,6 +27,13 @@ REGION="${AWS_REGION:-us-east-1}"
 BASE="watch/$REGION"
 REPO=watch
 
+# Cross-account (ADR-020): the estate applies cross-account via terragrunt's provider assume_role,
+# but the raw ECR :bootstrap self-heal below must target the foundation (nonprod) account that owns
+# the repo. Load the member ids (for xacct) + the helper. Blank ids => single-account => no-op.
+# shellcheck source=lib/xacct.sh
+. "$ROOT/scripts/lib/xacct.sh"
+[ -n "${WATCH_NONPROD_ACCOUNT_ID:-}${WATCH_PROD_ACCOUNT_ID:-}" ] || { [ -f .env ] && { set -a; . ./.env; set +a; }; }
+
 # prod/dns reads CLOUDFLARE_API_TOKEN; load it from .env (never committed) if not already set.
 if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ -f .env ]; then set -a; . ./.env; set +a; fi
 
@@ -49,21 +56,28 @@ echo "Scope   : $WHICH  ($DIR)"
 [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && echo "WARN    : CLOUDFLARE_API_TOKEN unset — prod/dns will fail (set it or source .env)"
 
 # --- ensure a :bootstrap image exists (the app task-def pulls <repo>:bootstrap) ---
-if aws ecr describe-images --region "$REGION" --repository-name "$REPO" \
-     --query 'imageDetails[?contains(imageTags,`bootstrap`)]' --output text 2>/dev/null | grep -q .; then
-  echo "Bootstrap: :bootstrap image present."
-else
-  NEWEST=$(aws ecr describe-images --region "$REGION" --repository-name "$REPO" \
-     --query 'reverse(sort_by(imageDetails,&imagePushedAt))[0].imageTags[0]' --output text 2>/dev/null)
-  if [ -z "$NEWEST" ] || [ "$NEWEST" = "None" ]; then
-    echo "ERROR: ECR repo '$REPO' has no images to seed :bootstrap — build+push one first." >&2; exit 1
+# The ECR repo lives in the foundation (nonprod) account (ADR-020); assume in for these raw ECR
+# calls, in a subshell so the estate apply below keeps the base (management) creds. No-op single-acct.
+if ! (
+  xacct_assume "$(xacct_account_for foundation)" >/dev/null
+  if aws ecr describe-images --region "$REGION" --repository-name "$REPO" \
+       --query 'imageDetails[?contains(imageTags,`bootstrap`)]' --output text 2>/dev/null | grep -q .; then
+    echo "Bootstrap: :bootstrap image present."
+  else
+    NEWEST=$(aws ecr describe-images --region "$REGION" --repository-name "$REPO" \
+       --query 'reverse(sort_by(imageDetails,&imagePushedAt))[0].imageTags[0]' --output text 2>/dev/null)
+    if [ -z "$NEWEST" ] || [ "$NEWEST" = "None" ]; then
+      echo "ERROR: ECR repo '$REPO' has no images to seed :bootstrap — build+push one first." >&2; exit 1
+    fi
+    echo "Bootstrap: seeding :bootstrap from newest image ($NEWEST)..."
+    MANIFEST=$(aws ecr batch-get-image --region "$REGION" --repository-name "$REPO" \
+       --image-ids imageTag="$NEWEST" --query 'images[0].imageManifest' --output text)
+    aws ecr put-image --region "$REGION" --repository-name "$REPO" \
+       --image-tag bootstrap --image-manifest "$MANIFEST" >/dev/null
+    echo "  :bootstrap -> $NEWEST"
   fi
-  echo "Bootstrap: seeding :bootstrap from newest image ($NEWEST)..."
-  MANIFEST=$(aws ecr batch-get-image --region "$REGION" --repository-name "$REPO" \
-     --image-ids imageTag="$NEWEST" --query 'images[0].imageManifest' --output text)
-  aws ecr put-image --region "$REGION" --repository-name "$REPO" \
-     --image-tag bootstrap --image-manifest "$MANIFEST" >/dev/null
-  echo "  :bootstrap -> $NEWEST"
+); then
+  echo "ERROR: :bootstrap image check/seed failed (foundation account)" >&2; exit 1
 fi
 
 if [ "$ASSUME_YES" != 1 ]; then

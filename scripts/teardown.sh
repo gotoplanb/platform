@@ -67,7 +67,8 @@ RESULTS="$RESDIR/results"; : > "$RESULTS"
 stacks_for_env() {
   local e="$1" s
   for s in "${ENV_STACKS[@]}"; do echo "$BASE/$e/$s"; done
-  { [ "$WITH_DNS" = 1 ] && [ "$e" = prod ]; } && echo "$BASE/prod/dns"
+  # prod's DNS is split (ADR-020): dns-status (CloudFront record) then dns (API record).
+  { [ "$WITH_DNS" = 1 ] && [ "$e" = prod ]; } && { echo "$BASE/prod/dns-status"; echo "$BASE/prod/dns"; }
 }
 
 # destroy_one <dir> — single stack; records OK/FAIL/SKIP (one $RESULTS line, append is atomic)
@@ -104,15 +105,22 @@ fi
 # those two records (keep the ACM cert + validation records — slow to revalidate) so a later
 # create is clean; otherwise CloudFront refuses to re-claim status.* (CNAMEAlreadyExists).
 destroy_dns_records() { # $1 = env — drops the app/status CNAMEs, keeps the ACM cert
-  local e="$1" d="$BASE/$1/dns"
-  [ -f "$d/terragrunt.hcl" ] || return 0
-  echo "==================== DROP $e/dns CNAME records (keep cert) ===================="
-  if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "SKIP   $e/dns records (CLOUDFLARE_API_TOKEN unset)" >> "$RESULTS"; return 0; fi
-  if ( cd "$d" && terragrunt destroy -target=cloudflare_record.app -target=cloudflare_record.status \
-         -auto-approve --non-interactive ); then
-    echo "OK     $e/dns records (app+status CNAMEs)" >> "$RESULTS"
-  else
-    echo "FAIL   $e/dns records" >> "$RESULTS"
+  local e="$1" d="$BASE/$1/dns" ds="$BASE/$1/dns-status"
+  { [ -f "$d/terragrunt.hcl" ] || [ -f "$ds/terragrunt.hcl" ]; } || return 0
+  echo "==================== DROP $e CNAME records (keep cert) ===================="
+  if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "SKIP   $e dns records (CLOUDFLARE_API_TOKEN unset)" >> "$RESULTS"; return 0; fi
+  # The app record (and status too, for envs that keep both in one stack e.g. staging) live in
+  # $e/dns; prod's status record is split into $e/dns-status (ADR-020). -target matches all count
+  # indices and is a no-op for a record this stack doesn't own.
+  if [ -f "$d/terragrunt.hcl" ]; then
+    ( cd "$d" && terragrunt destroy -target=cloudflare_record.app -target=cloudflare_record.status \
+        -auto-approve --non-interactive ) \
+      && echo "OK     $e/dns records" >> "$RESULTS" || echo "FAIL   $e/dns records" >> "$RESULTS"
+  fi
+  if [ -f "$ds/terragrunt.hcl" ]; then
+    ( cd "$ds" && terragrunt destroy -target=cloudflare_record.status \
+        -auto-approve --non-interactive ) \
+      && echo "OK     $e/dns-status record" >> "$RESULTS" || echo "FAIL   $e/dns-status record" >> "$RESULTS"
   fi
 }
 

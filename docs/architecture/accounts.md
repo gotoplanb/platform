@@ -28,20 +28,38 @@ The root config maps each stack (by path) to a **target account** and generates 
 Verified 2026-07-03: `OrganizationAccountAccessRole` is assumable from `watch-bootstrap` into both
 members; with blank IDs, `plan` on the live estate shows **no changes**.
 
-## RESUME POINT (checkpoint 2026-07-03)
+## STATUS (2026-07-03) — estate live cross-account, promote PROVEN
 
-Everything below is staged; the running estate is being torn down as a checkpoint. State of play:
-- **Done + committed, gated (no effect until `.env` is filled):** the provider seam (root
-  `terragrunt.hcl` + `accounts.hcl`, assume-role proven into both members) and the ECR
-  cross-account pull policy.
-- **In flight:** `make teardown` of the current single-account estate (tmux `watch:shell`, log
-  `scratchpad/teardown-cutover.log`). Wait for it + `scripts/sweep.sh` → clean.
-- **Not built yet:** the cross-account pipeline refactor — the atomic 5-step unit in the *build
-  spec* section above (artifact KMS CMK, extract `modules/codedeploy`, `prod/deploy` stack +
-  cross-account role, `DeployProd` action `role_arn`, pipeline inputs).
+The re-lay is done and the crux is validated. State of play:
+- **Estate up cross-account:** staging (foundation + staging + obs slice) in **watch-nonprod**,
+  prod app plane in **watch-prod**, pipeline + `prod/deploy` (cross-account CodeDeploy + the
+  `watch-prod-deploy` role) built. Provider seam (root `terragrunt.hcl` + `accounts.hcl`) routes
+  each path to its account.
+- **Cross-account promote PROVEN:** a CodeDeploy blue/green in watch-prod, driven by the nonprod
+  pipeline identity assuming `watch-prod-deploy`, shifted traffic to a green task set pulling the
+  **nonprod ECR image cross-account**. See ADR-020 "Crossing the seam".
+- **Verified:** staging + prod `/api/status` 200 (migrated + seeded); staging status SPA live at
+  `status-stg.davestanton.com` (viewed); obs plane (watch-backend traces in Tempo); prod API live
+  by name at `watch.davestanton.com`.
+- **Blocked on AWS (new-account holds — see below):** pipeline **Build** (CodeBuild), prod
+  **status SPA + `prod/dns-status`** (CloudFront). Case opened.
 
-**Owner note:** state is disposable and prod need not stay up (daily build/teardown). So this is a
-**clean re-lay, not a migration** — no state preservation, no backward-compat needed.
+**Console access (member accounts).** Root **cannot switch roles** — make an IAM admin user in
+management (or IAM Identity Center), then switch-role into each member (IDs live in `.env`, never
+committed — substitute `$WATCH_NONPROD_ACCOUNT_ID` / `$WATCH_PROD_ACCOUNT_ID`):
+- nonprod: `https://signin.aws.amazon.com/switchrole?account=$WATCH_NONPROD_ACCOUNT_ID&roleName=OrganizationAccountAccessRole&displayName=watch-nonprod`
+- prod:    `https://signin.aws.amazon.com/switchrole?account=$WATCH_PROD_ACCOUNT_ID&roleName=OrganizationAccountAccessRole&displayName=watch-prod`
+
+**New-account activation holds.** Day-old member accounts block **CloudFront** and pin **CodeBuild**
+concurrency to **0** until AWS verifies them (Account & billing case, free). The estate stands up
+regardless; only CodeBuild + CloudFront wait. Draft: `support-case-newaccount-activation.md`.
+**The holds are non-deterministic per account** — nonprod drew CodeBuild-only, prod drew
+CloudFront-only; it's an independent AWS risk decision, not a config/env difference (both frontends
+use the same module). Don't assume sibling accounts get the same holds, and don't chase a fix on
+our side — the support case is the only lever.
+
+**Owner note:** state is disposable and prod need not stay up (daily build/teardown) — a clean
+re-lay, not a migration.
 
 ## Cutover (the clean re-lay)
 
@@ -60,11 +78,13 @@ Everything below is staged; the running estate is being torn down as a checkpoin
 
 Roll back at any point by re-blanking `.env` (everything routes to the current account again).
 
-## Cross-account pipeline deploy — build spec (Option A, ADR-017)
+## Cross-account pipeline deploy — build spec (Option A, ADR-017) — ✅ IMPLEMENTED
 
+All 5 steps below are built (2026-07-03) and the promote is proven; kept as the design record.
 The pipeline (nonprod) builds once and deploys prod **in `watch-prod`** via CodePipeline's
-action-level cross-account `role_arn`. Done so far: **ECR repo policy** grants `watch-prod` pull
-(`modules/ecr`, gated on `WATCH_PROD_ACCOUNT_ID`). Remaining (an atomic unit — do together):
+action-level cross-account `role_arn`. The `watch-prod-deploy` **service** role collided with the
+CodeDeploy service role (both derived `watch-prod-deploy`); the CodeDeploy service role is now
+`…-codedeploy` (ADR-020). Steps:
 
 1. **Artifact KMS key** (`modules/pipeline/main.tf`) — replace the artifact bucket's AES256 with a
    customer-managed `aws_kms_key`; set the CodePipeline `artifact_store.encryption_key`; key policy
@@ -93,10 +113,13 @@ Note: `CodeDeployToECS`'s `configuration` map has no role field — cross-accoun
 `role_arn` argument (a general CodePipeline feature), not a Lambda wrapper.
 
 ## Not yet done (follow-ups)
+- **AWS new-account verification** — case opened; lifts the CloudFront + CodeBuild holds. Then:
+  re-run the pipeline Build end-to-end, apply `prod/frontend` → `prod/dns-status`.
 - **Org/accounts as code** — the accounts were created in the console; import them into an
   `account/organization` stack (`aws_organizations_organization` + `aws_organizations_account`,
   `prevent_destroy`) to manage them as code.
 - **Per-member state buckets** (ADR-020 §3 hardening).
-- **Cross-account ECR pull + pipeline deploy role** (step 3) — the real ADR-017 proof.
 - **Per-member `watch-bootstrap`/`watch-ro`** — today we assume `OrganizationAccountAccessRole`;
   scope down to dedicated roles later.
+- **Split staging DNS too (symmetry)** — staging keeps one `dns` stack (both records); prod is
+  split (`dns` + `dns-status`). Harmless (nonprod CloudFront isn't held); split later for parity.
