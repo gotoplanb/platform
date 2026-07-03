@@ -12,4 +12,8 @@ terraform {
 inputs = {
   name = "watch"
   tags = { scope = "shared", env = "platform" }
+
+  # Cross-account promote-by-digest (ADR-020): let watch-prod pull. compact() drops the empty
+  # string when WATCH_PROD_ACCOUNT_ID is unset, so this is a no-op until the split is cut over.
+  pull_account_ids = compact([get_env("WATCH_PROD_ACCOUNT_ID", "")])
 }

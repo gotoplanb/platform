@@ -13,6 +13,12 @@ variable "tags" {
   default = {}
 }
 
+variable "pull_account_ids" {
+  description = "Extra AWS account ids allowed to pull (cross-account promote-by-digest, ADR-020/#22). Empty = same-account only, so this is gated with the split."
+  type        = list(string)
+  default     = []
+}
+
 resource "aws_ecr_repository" "this" {
   name                 = var.name
   image_tag_mutability = "IMMUTABLE" # promote by digest; tags never move
@@ -33,6 +39,28 @@ resource "aws_ecr_lifecycle_policy" "this" {
       description  = "Keep the last 20 images"
       selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 20 }
       action       = { type = "expire" }
+    }]
+  })
+}
+
+# Cross-account pull: the prod account (watch-prod) pulls the SAME digest built once in nonprod
+# (ADR-017 across the account boundary). GetAuthorizationToken is account-level (the puller's
+# ECS execution role already has it via AmazonECSTaskExecutionRolePolicy); the repo policy grants
+# the layer/image reads cross-account.
+resource "aws_ecr_repository_policy" "cross_account_pull" {
+  count      = length(var.pull_account_ids) > 0 ? 1 : 0
+  repository = aws_ecr_repository.this.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "CrossAccountPull"
+      Effect    = "Allow"
+      Principal = { AWS = [for id in var.pull_account_ids : "arn:aws:iam::${id}:root"] }
+      Action = [
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:BatchCheckLayerAvailability",
+      ]
     }]
   })
 }
