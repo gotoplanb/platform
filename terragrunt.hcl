@@ -17,9 +17,10 @@ locals {
   rel  = path_relative_to_include()
   want = (
     startswith(local.rel, "account/organization")     ? local.current : # org runs in management (= current)
+    startswith(local.rel, "account/github-oidc")       ? local.current : # platform-repo CI base (OIDC provider + plan/apply roles) + the account that assumes into members -> management
     startswith(local.rel, "watch/us-east-1/prod/")     ? local.acct.prod_account_id :
     startswith(local.rel, "watch/us-east-1/staging/")  ? local.acct.nonprod_account_id :
-    local.acct.nonprod_account_id # foundation (ecr/pipeline/connection/ci-trigger/account/*, github/*) -> nonprod
+    local.acct.nonprod_account_id # foundation (ecr/pipeline/connection/ci-trigger, watch/us-east-1/*) -> nonprod
   )
   target = local.want != "" ? local.want : local.current
   cross  = local.target != local.current
