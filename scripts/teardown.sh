@@ -104,6 +104,24 @@ fi
 # The watch/status CNAMEs point at the ALB/CloudFront we're about to destroy. Remove just
 # those two records (keep the ACM cert + validation records — slow to revalidate) so a later
 # create is clean; otherwise CloudFront refuses to re-claim status.* (CNAMEAlreadyExists).
+# _drop_records <label> <dir> <target...> — targeted destroy of a stack's CNAME record(s), but
+# ONLY if the stack has such state. A split record stack that never applied (e.g. prod/dns-status
+# while CloudFront is held) has none — skip it rather than fail the whole run (exit 1).
+_drop_records() {
+  local label="$1" dir="$2"; shift 2
+  [ -f "$dir/terragrunt.hcl" ] || return 0
+  if ! ( cd "$dir" && terragrunt state list 2>/dev/null | grep -q cloudflare_record ); then
+    echo "SKIP   $label (no records in state)" >> "$RESULTS"; return 0
+  fi
+  local targets=() t
+  for t in "$@"; do targets+=("-target=$t"); done
+  if ( cd "$dir" && terragrunt destroy "${targets[@]}" -auto-approve --non-interactive ); then
+    echo "OK     $label" >> "$RESULTS"
+  else
+    echo "FAIL   $label" >> "$RESULTS"
+  fi
+}
+
 destroy_dns_records() { # $1 = env — drops the app/status CNAMEs, keeps the ACM cert
   local e="$1" d="$BASE/$1/dns" ds="$BASE/$1/dns-status"
   { [ -f "$d/terragrunt.hcl" ] || [ -f "$ds/terragrunt.hcl" ]; } || return 0
@@ -112,16 +130,8 @@ destroy_dns_records() { # $1 = env — drops the app/status CNAMEs, keeps the AC
   # The app record (and status too, for envs that keep both in one stack e.g. staging) live in
   # $e/dns; prod's status record is split into $e/dns-status (ADR-020). -target matches all count
   # indices and is a no-op for a record this stack doesn't own.
-  if [ -f "$d/terragrunt.hcl" ]; then
-    ( cd "$d" && terragrunt destroy -target=cloudflare_record.app -target=cloudflare_record.status \
-        -auto-approve --non-interactive ) \
-      && echo "OK     $e/dns records" >> "$RESULTS" || echo "FAIL   $e/dns records" >> "$RESULTS"
-  fi
-  if [ -f "$ds/terragrunt.hcl" ]; then
-    ( cd "$ds" && terragrunt destroy -target=cloudflare_record.status \
-        -auto-approve --non-interactive ) \
-      && echo "OK     $e/dns-status record" >> "$RESULTS" || echo "FAIL   $e/dns-status record" >> "$RESULTS"
-  fi
+  _drop_records "$e/dns records" "$d" cloudflare_record.app cloudflare_record.status
+  _drop_records "$e/dns-status record" "$ds" cloudflare_record.status
 }
 
 # pipeline is shared and references both envs — always destroy it first, synchronously.
