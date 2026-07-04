@@ -59,6 +59,14 @@ locals {
     { name = "OTEL_SERVICE_NAME", value = "watch-backend" },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://localhost:${local.otel_http_port}" },
     { name = "OTEL_RESOURCE_ATTRIBUTES", value = "deployment.environment=${var.env},service.version=${var.service_version}" },
+    # Async worker + Session Check trace store (ADR-025/022/023). QUEUE_PROVIDER/WATCH_QUEUE_URL are
+    # wired only when the worker is enabled; the *_LOCAL_MODE flags default to synchronous.
+    { name = "CHECKS_LOCAL_MODE", value = var.checks_local_mode ? "1" : "0" },
+    { name = "WEBHOOKS_LOCAL_MODE", value = var.webhooks_local_mode ? "1" : "0" },
+    { name = "QUEUE_PROVIDER", value = var.enable_worker ? "sqs" : "local" },
+    { name = "WATCH_QUEUE_URL", value = var.enable_worker ? aws_sqs_queue.jobs[0].url : "" },
+    { name = "TRACE_STORE_PROVIDER", value = var.trace_store_provider },
+    { name = "TEMPO_QUERY_URL", value = var.tempo_query_url },
     ], var.app_hostname != "" ? [
     # HTTPS (#13): trust the public origin for CSRF + secure cookies behind the ALB.
     { name = "CSRF_TRUSTED_ORIGINS", value = "https://${var.app_hostname}" },
@@ -69,11 +77,16 @@ locals {
 
   # Secrets resolved at launch by the execution role (SSM SecureStrings + the RDS-managed
   # Secrets Manager credential). Values never appear in the task def or logs.
-  app_secrets = [
+  app_secrets = concat([
     { name = "DJANGO_SECRET_KEY", valueFrom = var.django_secret_key_param_arn },
     { name = "INTAKE_WEBHOOK_SECRET", valueFrom = var.intake_webhook_secret_param_arn },
     { name = "POSTGRES_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
-  ]
+    ],
+    # Session Check + outbound-webhook secrets (ADR-022/023) — omitted when the ARN isn't wired.
+    var.session_user_hmac_key_param_arn != "" ? [{ name = "SESSION_USER_HMAC_KEY", valueFrom = var.session_user_hmac_key_param_arn }] : [],
+    var.checks_webhook_secret_param_arn != "" ? [{ name = "CHECKS_WEBHOOK_SECRET", valueFrom = var.checks_webhook_secret_param_arn }] : [],
+    var.webhook_echo_secret_param_arn != "" ? [{ name = "WEBHOOK_ECHO_SECRET", valueFrom = var.webhook_echo_secret_param_arn }] : [],
+  )
 
   container_definitions = [
     {
@@ -123,9 +136,9 @@ locals {
       # :4317/:4318 and forwards to the per-env gateway. essential=false — telemetry down must
       # never take the app down (the app buffers; egress stays off the critical path). Config
       # is delivered via env→file so no custom image is needed (#19 may move it to SSM/S3).
-      name       = "alloy"
-      image      = var.alloy_image
-      essential  = false
+      name      = "alloy"
+      image     = var.alloy_image
+      essential = false
       # --stability.level=experimental enables otelcol.exporter.debug (the no-gateway sink);
       # the GA otlp exporter used once a gateway is wired doesn't need it, but the flag is safe.
       entryPoint = ["sh", "-c", "printf '%s' \"$ALLOY_CONFIG\" > /tmp/config.alloy && exec alloy run /tmp/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/tmp/alloy --stability.level=experimental"]

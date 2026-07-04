@@ -55,3 +55,16 @@ output "https_listener_arn" {
   description = "ALB :443 production listener (#13); null until app_hostname is set."
   value       = var.app_hostname != "" ? aws_lb_listener.https[0].arn : null
 }
+
+# Async job queue (ADR-025); null when the worker is disabled.
+output "jobs_queue_url" {
+  value = var.enable_worker ? aws_sqs_queue.jobs[0].url : null
+}
+
+output "jobs_queue_arn" {
+  value = var.enable_worker ? aws_sqs_queue.jobs[0].arn : null
+}
+
+output "worker_service_name" {
+  value = var.enable_worker ? aws_ecs_service.worker[0].name : null
+}

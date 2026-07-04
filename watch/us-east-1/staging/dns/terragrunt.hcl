@@ -43,5 +43,8 @@ inputs = {
   app_hostname      = "watch-stg.davestanton.com"
   alb_dns_name      = dependency.app.outputs.alb_dns_name
   status_hostname   = "status-stg.davestanton.com"
-  cloudfront_domain = dependency.frontend.outputs.distribution_domain_name
+  # Decoupled from the CloudFront hold (ADR-020): the status record is gated on this being set, so
+  # tolerate the frontend stack having no outputs yet (CloudFront verification pending) — create just
+  # the app CNAME now; the status CNAME lands once CloudFront exists.
+  cloudfront_domain = try(dependency.frontend.outputs.distribution_domain_name, "")
 }

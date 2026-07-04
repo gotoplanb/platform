@@ -66,6 +66,9 @@ dependency "config" {
     appconfig_profile_name          = "flags"
     appconfig_read_policy_arn       = "arn:aws:iam::000000000000:policy/mock-appconfig"
     secrets_read_policy_arn         = "arn:aws:iam::000000000000:policy/mock-secrets"
+    session_user_hmac_key_param_arn = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-hmac"
+    checks_webhook_secret_param_arn = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-checks"
+    webhook_echo_secret_param_arn   = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-echo"
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
@@ -111,4 +114,20 @@ inputs = {
   desired_count = 1
   autoscale_min = 1
   autoscale_max = 4
+
+  # --- Async worker + cloud mode (ADR-025) ---
+  # Pin the app image to the manually-built digest (CodeBuild promote is on hold): this also
+  # feeds the worker task-def. The app SERVICE ignores task_definition (CodeDeploy owns it), so
+  # the running app is shifted via a manual CodeDeploy of this same revision.
+  image_uri = "${dependency.ecr.outputs.repository_url}:6d6f335"
+
+  enable_worker        = true
+  worker_desired_count = 1
+  checks_local_mode    = false # enqueue Session Checks to SQS for the worker
+  webhooks_local_mode  = false # enqueue webhook deliveries to SQS for the worker
+  trace_store_provider = "none" # prove the drain first; Tempo wiring is a follow-up
+
+  session_user_hmac_key_param_arn = dependency.config.outputs.session_user_hmac_key_param_arn
+  checks_webhook_secret_param_arn = dependency.config.outputs.checks_webhook_secret_param_arn
+  webhook_echo_secret_param_arn   = dependency.config.outputs.webhook_echo_secret_param_arn
 }

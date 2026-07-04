@@ -204,3 +204,61 @@ variable "hsts_seconds" {
   type        = number
   default     = 31536000
 }
+
+# ---- Async worker + job queue (ADR-025) -------------------------------------
+# Gated: enable_worker=false (default) leaves prod untouched — no queue, no worker, and the
+# cloud-mode env vars below only take effect where explicitly set.
+
+variable "enable_worker" {
+  description = "Stand up the SQS job queue (+DLQ) and the run_sqs_worker ECS service (ADR-025)."
+  type        = bool
+  default     = false
+}
+
+variable "worker_desired_count" {
+  description = "Worker service task count. 1 is plenty for the status-page/check/webhook volume."
+  type        = number
+  default     = 1
+}
+
+# Cloud-mode toggles (ADR-022/023/025). Default matches the app's own defaults (local/synchronous);
+# set false to enqueue to SQS for the worker to drain.
+variable "checks_local_mode" {
+  description = "true = run Session Checks synchronously in-request; false = enqueue for the worker."
+  type        = bool
+  default     = true
+}
+
+variable "webhooks_local_mode" {
+  description = "true = POST webhooks synchronously in-request; false = enqueue for the worker."
+  type        = bool
+  default     = true
+}
+
+variable "trace_store_provider" {
+  description = "Session Check trace backend: none | tempo."
+  type        = string
+  default     = "none"
+}
+
+variable "tempo_query_url" {
+  description = "Tempo query-frontend base URL (when trace_store_provider=tempo)."
+  type        = string
+  default     = ""
+}
+
+# New SSM SecureString ARNs (config stack). Empty => the secret is omitted from the task def.
+variable "session_user_hmac_key_param_arn" {
+  type    = string
+  default = ""
+}
+
+variable "checks_webhook_secret_param_arn" {
+  type    = string
+  default = ""
+}
+
+variable "webhook_echo_secret_param_arn" {
+  type    = string
+  default = ""
+}

@@ -47,3 +47,21 @@ output "secrets_read_policy_arn" {
   description = "Attach to the ECS execution role (SSM secrets)."
   value       = aws_iam_policy.secrets_read.arn
 }
+
+# Session Check + outbound-webhook secret ARNs (ADR-022/023/025) — task-def `secrets` block (#6).
+output "session_user_hmac_key_param_arn" {
+  value = aws_ssm_parameter.session_user_hmac_key.arn
+}
+
+output "checks_webhook_secret_param_arn" {
+  value = aws_ssm_parameter.checks_webhook_secret.arn
+}
+
+output "webhook_echo_secret_param_arn" {
+  value = aws_ssm_parameter.webhook_echo_secret.arn
+}
+
+# Names (for db.sh-style seeding: the echo receiver's secret must match a subscription's secret).
+output "webhook_echo_secret_param_name" {
+  value = aws_ssm_parameter.webhook_echo_secret.name
+}

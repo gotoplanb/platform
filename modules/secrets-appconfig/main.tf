@@ -43,6 +43,47 @@ resource "aws_ssm_parameter" "intake_webhook_secret" {
   tags        = merge(var.tags, { Name = "${var.name}-intake-webhook-secret" })
 }
 
+# Session Check + outbound-webhook secrets (ADR-022/023/025). Same discipline: generated here,
+# injected via the task-def `secrets` block, referenced by ARN.
+resource "random_password" "session_user_hmac_key" {
+  length  = 48
+  special = false # HMAC key — keep it plain-ASCII
+}
+
+resource "random_password" "checks_webhook_secret" {
+  length  = 40
+  special = false # M2M shared secret compared verbatim; header-safe
+}
+
+resource "random_password" "webhook_echo_secret" {
+  length  = 40
+  special = false # HMAC signing secret for the loopback echo receiver
+}
+
+resource "aws_ssm_parameter" "session_user_hmac_key" {
+  name        = "/watch/${var.env}/session-user-hmac-key"
+  description = "Keyed HMAC for hashing session.user ids before trace lookup (ADR-022) for ${var.name}."
+  type        = "SecureString"
+  value       = random_password.session_user_hmac_key.result
+  tags        = merge(var.tags, { Name = "${var.name}-session-user-hmac-key" })
+}
+
+resource "aws_ssm_parameter" "checks_webhook_secret" {
+  name        = "/watch/${var.env}/checks-webhook-secret"
+  description = "Shared secret for the inbound Session Check webhook (ADR-022) for ${var.name}."
+  type        = "SecureString"
+  value       = random_password.checks_webhook_secret.result
+  tags        = merge(var.tags, { Name = "${var.name}-checks-webhook-secret" })
+}
+
+resource "aws_ssm_parameter" "webhook_echo_secret" {
+  name        = "/watch/${var.env}/webhook-echo-secret"
+  description = "Signing secret for the loopback /api/webhook-echo receiver (ADR-023) for ${var.name}."
+  type        = "SecureString"
+  value       = random_password.webhook_echo_secret.result
+  tags        = merge(var.tags, { Name = "${var.name}-webhook-echo-secret" })
+}
+
 # ---- AppConfig --------------------------------------------------------------
 
 resource "aws_appconfig_application" "this" {
@@ -115,9 +156,15 @@ resource "aws_iam_policy" "secrets_read" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameters", "ssm:GetParameter"]
-        Resource = [aws_ssm_parameter.django_secret_key.arn, aws_ssm_parameter.intake_webhook_secret.arn]
+        Effect = "Allow"
+        Action = ["ssm:GetParameters", "ssm:GetParameter"]
+        Resource = [
+          aws_ssm_parameter.django_secret_key.arn,
+          aws_ssm_parameter.intake_webhook_secret.arn,
+          aws_ssm_parameter.session_user_hmac_key.arn,
+          aws_ssm_parameter.checks_webhook_secret.arn,
+          aws_ssm_parameter.webhook_echo_secret.arn,
+        ]
       },
       {
         Effect   = "Allow"
