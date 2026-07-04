@@ -123,3 +123,5 @@ Note: `CodeDeployToECS`'s `configuration` map has no role field — cross-accoun
   scope down to dedicated roles later.
 - **Split staging DNS too (symmetry)** — staging keeps one `dns` stack (both records); prod is
   split (`dns` + `dns-status`). Harmless (nonprod CloudFront isn't held); split later for parity.
+
+<!-- ci: exercise plan-on-PR (ADR-020) -->
