@@ -21,6 +21,8 @@ locals {
     # consolidated-billing budgets / cost-allocation-tag activation (payer-account only). None of
     # these belong in a member account; routing them to nonprod was a dormant landmine (ADR-020).
     startswith(local.rel, "account/")                  ? local.current :
+    startswith(local.rel, "member-ci/nonprod")         ? local.acct.nonprod_account_id : # read-only CI plan role in nonprod
+    startswith(local.rel, "member-ci/prod")            ? local.acct.prod_account_id :    # read-only CI plan role in prod
     startswith(local.rel, "watch/us-east-1/prod/")     ? local.acct.prod_account_id :
     startswith(local.rel, "watch/us-east-1/staging/")  ? local.acct.nonprod_account_id :
     local.acct.nonprod_account_id # foundation (ecr/pipeline/connection/ci-trigger, watch/us-east-1/*) -> nonprod
@@ -28,11 +30,16 @@ locals {
   target = local.want != "" ? local.want : local.current
   cross  = local.target != local.current
 
+  # Which role the provider assumes in the target member account. Defaults to the admin
+  # OrganizationAccountAccessRole (local dev, bootstrap, CI apply). The plan-on-PR CI job sets
+  # WATCH_MEMBER_ROLE_NAME=watch-ci-plan so plan assumes the READ-ONLY member role instead (ADR-020).
+  member_role_name = get_env("WATCH_MEMBER_ROLE_NAME", "OrganizationAccountAccessRole")
+
   # Base creds live in the management account and assume OrganizationAccountAccessRole into the
   # target member account. State stays centralized in the management bucket for now (per-member
   # state buckets are a later hardening — see ADR-020); the bucket keys off the current account.
   account_id      = local.current
-  assume_role_block = local.cross ? "assume_role { role_arn = \"arn:aws:iam::${local.target}:role/OrganizationAccountAccessRole\" }" : ""
+  assume_role_block = local.cross ? "assume_role { role_arn = \"arn:aws:iam::${local.target}:role/${local.member_role_name}\" }" : ""
 }
 
 remote_state {

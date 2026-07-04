@@ -1,0 +1,59 @@
+# Read-only `terragrunt run --all plan` on every PR (ADR-020). Assumes the management gha-plan
+# OIDC role, which chains into each member's read-only watch-ci-plan role (never admin) — plan
+# can never mutate an account. Fork PRs get no OIDC id-token from GitHub, so only trusted-branch
+# PRs run this. Locking is skipped (TF_CLI_ARGS_plan=-lock=false) so the read-only role needs no
+# state-lock write; plan never persists state.
+name: terragrunt plan
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write # request the OIDC token to assume the AWS role
+  contents: read
+
+concurrency:
+  group: tg-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  TG_TF_PATH: tofu
+  TF_CLI_ARGS_plan: "-lock=false" # read-only plan: no lock-table write needed
+  # Plan assumes the READ-ONLY member role (ADR-020); apply uses the default admin role.
+  WATCH_MEMBER_ROLE_NAME: watch-ci-plan
+  WATCH_NONPROD_ACCOUNT_ID: ${{ secrets.WATCH_NONPROD_ACCOUNT_ID }}
+  WATCH_PROD_ACCOUNT_ID: ${{ secrets.WATCH_PROD_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+  OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GHA_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.2"
+          tofu_wrapper: false
+
+      - name: Install Terragrunt
+        run: |
+          curl -sSL -o /usr/local/bin/terragrunt \
+            https://github.com/gruntwork-io/terragrunt/releases/download/v1.0.8/terragrunt_linux_amd64
+          chmod +x /usr/local/bin/terragrunt
+          terragrunt --version
+
+      - name: terragrunt run --all plan (estate)
+        working-directory: watch/us-east-1
+        run: terragrunt run --all plan --non-interactive

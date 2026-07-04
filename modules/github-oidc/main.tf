@@ -74,6 +74,23 @@ resource "aws_iam_role_policy_attachment" "plan_readonly" {
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
+# Cross-account plan (ADR-020): ReadOnlyAccess excludes sts:AssumeRole, so grant the plan role a
+# NARROW assume on exactly the members' read-only watch-ci-plan roles — never the admin
+# OrganizationAccountAccessRole. Keeps the plan path read-only in every account.
+resource "aws_iam_role_policy" "plan_assume_members" {
+  count  = length(var.member_plan_role_arns) > 0 ? 1 : 0
+  name   = "assume-member-plan-roles"
+  role   = aws_iam_role.plan.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "sts:AssumeRole"
+      Resource = var.member_plan_role_arns
+    }]
+  })
+}
+
 resource "aws_iam_role" "apply" {
   name                 = "${var.name_prefix}-apply"
   description          = "GitHub Actions: terragrunt apply (write, ${var.apply_branch} only)."

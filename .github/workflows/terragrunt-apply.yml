@@ -1,0 +1,61 @@
+# `terragrunt run --all apply` via the management gha-apply OIDC role (admin, main-only trust),
+# which chains into each member's admin OrganizationAccountAccessRole (ADR-020).
+#
+# MANUAL (workflow_dispatch) for now — the estate is intentionally torn down between build days,
+# so we don't want a merge to main to auto-recreate it. Flip `on:` to `push: branches: [main]`
+# once main should continuously track the live estate.
+name: terragrunt apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Subtree to apply (relative to repo root)"
+        required: false
+        default: "watch/us-east-1"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: tg-apply # never two applies at once
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  TG_TF_PATH: tofu
+  WATCH_NONPROD_ACCOUNT_ID: ${{ secrets.WATCH_NONPROD_ACCOUNT_ID }}
+  WATCH_PROD_ACCOUNT_ID: ${{ secrets.WATCH_PROD_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+  OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GHA_APPLY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.2"
+          tofu_wrapper: false
+
+      - name: Install Terragrunt
+        run: |
+          curl -sSL -o /usr/local/bin/terragrunt \
+            https://github.com/gruntwork-io/terragrunt/releases/download/v1.0.8/terragrunt_linux_amd64
+          chmod +x /usr/local/bin/terragrunt
+          terragrunt --version
+
+      - name: terragrunt run --all apply
+        working-directory: ${{ github.event.inputs.scope || 'watch/us-east-1' }}
+        run: terragrunt run --all apply --non-interactive

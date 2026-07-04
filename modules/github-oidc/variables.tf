@@ -21,3 +21,9 @@ variable "name_prefix" {
   type        = string
   default     = "gha" # github-actions
 }
+
+variable "member_plan_role_arns" {
+  description = "Member-account read-only roles the plan role may assume for cross-account plan (ADR-020)."
+  type        = list(string)
+  default     = []
+}
