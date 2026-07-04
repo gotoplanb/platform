@@ -16,8 +16,11 @@ locals {
   acct = read_terragrunt_config(find_in_parent_folders("accounts.hcl")).locals
   rel  = path_relative_to_include()
   want = (
-    startswith(local.rel, "account/organization")     ? local.current : # org runs in management (= current)
-    startswith(local.rel, "account/github-oidc")       ? local.current : # platform-repo CI base (OIDC provider + plan/apply roles) + the account that assumes into members -> management
+    # All account-level governance -> management (= current): the org, the platform-repo CI base
+    # (OIDC provider + plan/apply roles + the account that assumes into members), and the
+    # consolidated-billing budgets / cost-allocation-tag activation (payer-account only). None of
+    # these belong in a member account; routing them to nonprod was a dormant landmine (ADR-020).
+    startswith(local.rel, "account/")                  ? local.current :
     startswith(local.rel, "watch/us-east-1/prod/")     ? local.acct.prod_account_id :
     startswith(local.rel, "watch/us-east-1/staging/")  ? local.acct.nonprod_account_id :
     local.acct.nonprod_account_id # foundation (ecr/pipeline/connection/ci-trigger, watch/us-east-1/*) -> nonprod
