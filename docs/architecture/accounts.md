@@ -15,10 +15,12 @@ member accounts along the plane boundary.
 ## How the seam works (`terragrunt.hcl` + `accounts.hcl`)
 
 The root config maps each stack (by path) to a **target account** and generates a provider that
-**assume-roles `OrganizationAccountAccessRole`** into it:
+**assume-roles** into it (the role name is `local.member_role_name`, default
+`OrganizationAccountAccessRole`; the CI plan job overrides it to the read-only `watch-ci-plan`):
 
-- `watch/us-east-1/prod/*` → prod · `watch/us-east-1/staging/*` → nonprod · foundation + `account/*`
-  + `github/*` → nonprod · `account/organization` → management.
+- `watch/us-east-1/prod/*` → prod · `watch/us-east-1/staging/*` → nonprod · `member-ci/{nonprod,prod}`
+  → the matching member · foundation (`ecr`/`pipeline`/`connection`/`ci-trigger`) → nonprod ·
+  **all `account/*`** (org, the CI OIDC base, consolidated-billing budgets) → **management**.
 - Base credentials (`AWS_PROFILE`) must be an identity in **management**; it assumes into the member.
 - **Gated:** blank member IDs in `accounts.hcl` fall back to the current account, so the seam is a
   **no-op until you fill the IDs** — the single-account estate keeps working unchanged.
@@ -112,6 +114,15 @@ CodeDeploy service role (both derived `watch-prod-deploy`); the CodeDeploy servi
 Note: `CodeDeployToECS`'s `configuration` map has no role field — cross-account is the **action's**
 `role_arn` argument (a general CodePipeline feature), not a Lambda wrapper.
 
+## Platform CI (done 2026-07-04)
+`terragrunt plan` on every PR + `apply` on manual dispatch, via the `gha-plan`/`gha-apply` OIDC
+roles (`.github/workflows/terragrunt-{plan,apply}.yml`). Least-privilege cross-account: `gha-plan`
+(read-only in management) assumes a read-only `watch-ci-plan` role in each member
+(`modules/member-ci-role` + `member-ci/{nonprod,prod}`) — plan can never mutate a member; the
+provider role is chosen by `WATCH_MEMBER_ROLE_NAME` (default admin for apply). Fork PRs get no OIDC.
+Proven: plan-on-PR ran `run --all plan` over the whole estate read-only, 30/30 units. `apply` is
+`workflow_dispatch`-only for now so a merge doesn't auto-recreate the disposable estate.
+
 ## Not yet done (follow-ups)
 - **AWS new-account verification** — case opened; lifts the CloudFront + CodeBuild holds. Then:
   re-run the pipeline Build end-to-end, apply `prod/frontend` → `prod/dns-status`.
@@ -119,7 +130,10 @@ Note: `CodeDeployToECS`'s `configuration` map has no role field — cross-accoun
   `account/organization` stack (`aws_organizations_organization` + `aws_organizations_account`,
   `prevent_destroy`) to manage them as code.
 - **Per-member state buckets** (ADR-020 §3 hardening).
-- **Per-member `watch-bootstrap`/`watch-ro`** — today we assume `OrganizationAccountAccessRole`;
-  scope down to dedicated roles later.
+- **Scope down the apply path** — `gha-apply` still chains through admin `OrganizationAccountAccessRole`;
+  a dedicated per-member apply role (narrower than admin) is the next tightening. (Plan is already
+  least-privilege via `watch-ci-plan`.)
+- **Switch apply-on-merge on** — flip `terragrunt-apply.yml` from `workflow_dispatch` to `push: main`
+  once main should continuously track the live estate (not during the build/teardown cycle).
 - **Split staging DNS too (symmetry)** — staging keeps one `dns` stack (both records); prod is
   split (`dns` + `dns-status`). Harmless (nonprod CloudFront isn't held); split later for parity.
