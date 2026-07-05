@@ -66,6 +66,9 @@ dependency "config" {
     appconfig_profile_name          = "flags"
     appconfig_read_policy_arn       = "arn:aws:iam::000000000000:policy/mock-appconfig"
     secrets_read_policy_arn         = "arn:aws:iam::000000000000:policy/mock-secrets"
+    session_user_hmac_key_param_arn = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-hmac"
+    checks_webhook_secret_param_arn = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-checks"
+    webhook_echo_secret_param_arn   = "arn:aws:ssm:us-east-1:000000000000:parameter/mock-echo"
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
@@ -81,7 +84,7 @@ inputs = {
 
   private_networking   = local.env.private_networking
   image_repository_url = dependency.ecr.outputs.repository_url
-  app_hostname         = "watch.davestanton.com" # adds the ALB :443 HTTPS listener (#13)
+  app_hostname         = "watch.davestanton.com"                 # adds the ALB :443 HTTPS listener (#13)
   certificate_arn      = dependency.cert.outputs.certificate_arn # from ../cert (#35)
 
   vpc_id             = dependency.network.outputs.vpc_id
@@ -113,4 +116,22 @@ inputs = {
   desired_count = 1
   autoscale_min = 1
   autoscale_max = 4
+
+  # --- Async worker + cloud mode (ADR-025) ---
+  # Promote-by-digest (ADR-017): prod runs the SAME digest staging proved. Pinned here while the
+  # CodeBuild promote is on hold; the app SERVICE is shifted to it via a manual cross-account
+  # CodeDeploy. The worker task-def uses this image too.
+  image_uri = "${dependency.ecr.outputs.repository_url}:6d6f335"
+
+  enable_worker        = true
+  worker_desired_count = 1
+  checks_local_mode    = false # enqueue Session Checks to SQS for the worker
+  webhooks_local_mode  = false # enqueue webhook deliveries to SQS for the worker
+  # trace_store_provider stays "none": prod has no in-VPC Tempo (telemetry → Grafana Cloud vendor,
+  # ADR-016 §2); the vendor trace-store impl is deferred (ADR-022). Session Check drains + returns
+  # indeterminate; webhook delivery works fully.
+
+  session_user_hmac_key_param_arn = dependency.config.outputs.session_user_hmac_key_param_arn
+  checks_webhook_secret_param_arn = dependency.config.outputs.checks_webhook_secret_param_arn
+  webhook_echo_secret_param_arn   = dependency.config.outputs.webhook_echo_secret_param_arn
 }
