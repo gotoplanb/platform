@@ -16,6 +16,7 @@ cd "$ROOT"
 export AWS_PROFILE="${AWS_PROFILE:-watch-bootstrap}"
 export TG_TF_PATH="${TG_TF_PATH:-tofu}"
 REGION="${AWS_REGION:-us-east-1}"
+ZONE="${WATCH_ZONE:-}"  # public DNS zone (from .env) — never hardcode the domain here
 
 case "${1:-both}" in
   both) ENVS=(staging prod) ;;
@@ -55,6 +56,21 @@ for env in "${ENVS[@]}"; do
     [ "$st" = 200 ] && echo "  ✓ /api/status 200" || { echo "  ✗ /api/status $st"; app_ok=0; }
   else
     echo "  ✗ no ALB output for $env"; app_ok=0
+  fi
+
+  # Status-page SPA (S3 + CloudFront). Hostname from the zone in .env (never hardcode the domain).
+  # During the CloudFront verification hold (ADR-020) the distribution + status DNS don't exist, so
+  # the host won't resolve (curl -> 000) — report as a skip, not a failure. Once deployed, enforce 200.
+  if [ -z "$ZONE" ]; then
+    echo "  · status page: WATCH_ZONE unset in .env (skip)"
+  else
+    case "$env" in staging) shost="status-stg.$ZONE" ;; *) shost="status.$ZONE" ;; esac
+    scode=$(curl -s --max-time 15 -o /dev/null -w '%{http_code}' "https://$shost" 2>/dev/null)
+    case "$scode" in
+      200) echo "  ✓ status page ($shost) 200" ;;
+      000) echo "  · status page ($shost) not deployed — CloudFront hold (skip)" ;;
+      *)   echo "  ✗ status page ($shost) $scode"; app_ok=0 ;;
+    esac
   fi
   [ "$app_ok" = 1 ] && echo "  → $env PASS" || { echo "  → $env FAIL"; rc=1; }
 done
