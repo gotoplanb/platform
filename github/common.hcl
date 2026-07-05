@@ -16,6 +16,7 @@ locals {
     "invalid"          = { color = "e4e669", description = "This doesn't seem right" }
     "question"         = { color = "d876e3", description = "Further information is requested" }
     "spec-gap"         = { color = "5319e7", description = "Open question / gap in the v1 spec to resolve before build" }
+    "tech-debt"        = { color = "d93f0b", description = "Cleanup / expedient to revisit (e.g. stopgaps for external blockers)" }
     "wontfix"          = { color = "ffffff", description = "This will not be worked on" }
   }
 }
