@@ -10,7 +10,7 @@ export ENV ?= prod
 
 .PHONY: help create create-staging create-prod pipeline up \
         teardown teardown-staging teardown-prod down \
-        sweep recreate migrate seed deploy-frontend deploy live live-finish lambda-promote
+        sweep recreate migrate seed deploy-frontend deploy live live-finish lambda-promote live-verify
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -66,3 +66,5 @@ live-finish: ## Finish a create aborted by the AWS holds: migrate -> promote Lam
 	scripts/live-finish.sh both
 lambda-promote: ## Package + promote the escalation/intake Lambdas from ../watch to ENVS (default staging): make lambda-promote LAMBDA_ENVS=staging
 	scripts/lambda-promote.sh $(if $(LAMBDA_ENVS),$(LAMBDA_ENVS),staging)
+live-verify: ## Read-only smoke: app+worker services running and the API healthy per env
+	scripts/live-verify.sh both

@@ -49,4 +49,7 @@ for e in "${ENVS[@]}"; do
   ( cd "$d" && terragrunt apply -auto-approve -no-color ) 2>&1 | grep -iE "Apply complete|cloudflare_record|Error" || true
 done
 
+step "verify"
+scripts/live-verify.sh "${1:-both}" || { echo "live-finish: post-finish verify FAILED" >&2; exit 1; }
+
 step "live-finish complete (${ENVS[*]})"
