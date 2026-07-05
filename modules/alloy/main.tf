@@ -46,6 +46,11 @@ variable "slow_threshold_ms" {
   type        = number
   default     = 1000
 }
+variable "keep_authenticated_attribute" {
+  description = "Gateway tail-sampling: span attribute whose presence means an authenticated / session-bearing trace — kept 100% (never sampled) so Session Check (ADR-022) is reliable and sessions are reconstructable. Empty = disabled. Sampling then only touches unauthenticated noise."
+  type        = string
+  default     = "session.id"
+}
 variable "dest_traces_only" {
   description = "True when the destination only accepts traces (e.g. Tempo) — metrics + logs are dropped at the receiver instead of being exported and rejected. False for a full LGTM/vendor (Grafana Cloud)."
   type        = bool
@@ -102,9 +107,26 @@ locals {
   #             writes are rare + high-value, so they're never sampled away
   #   reads   — a probabilistic slice of the rest (health checks, status page, list/detail GETs)
   # http.method is the app's semconv (confirmed in Tempo); add http.request.method if it upgrades.
-  tail_sampling_raw = <<-EOT
+  # Authenticated / session-bearing traces (any span carrying keep_authenticated_attribute, e.g.
+  # session.id) are kept 100% — never sampled — so a Session Check (ADR-022) can always find AND
+  # reconstruct a session, even when it was all successful GETs. Only unauthenticated noise (health
+  # checks, /api/status, webhooks) falls through to the probabilistic `reads` policy below.
+  auth_policy_str     = <<-POL
+        policy {
+          name = "authenticated"
+          type = "string_attribute"
+          string_attribute {
+            key                    = "${var.keep_authenticated_attribute}"
+            values                 = [".+"]
+            enabled_regex_matching = true
+          }
+        }
+  POL
+  keep_auth_policy    = var.keep_authenticated_attribute != "" ? local.auth_policy_str : ""
+  tail_sampling_raw   = <<-EOT
     otelcol.processor.tail_sampling "ts" {
       decision_wait = "10s"
+      ${local.keep_auth_policy}
       policy {
         name = "errors"
         type = "status_code"
