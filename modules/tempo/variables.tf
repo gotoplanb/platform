@@ -38,6 +38,12 @@ variable "gateway_sg_id" {
   type        = string
 }
 
+variable "app_sg_id" {
+  description = "App/worker SG — allowed to reach the Tempo query API (:3200) for Session Check (ADR-022). Empty = no query ingress."
+  type        = string
+  default     = ""
+}
+
 variable "tempo_image" {
   type    = string
   default = "grafana/tempo:2.6.1"

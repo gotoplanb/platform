@@ -17,6 +17,7 @@ dependency "network" {
     vpc_id             = "vpc-mock"
     public_subnet_ids  = ["subnet-ma", "subnet-mb"]
     private_subnet_ids = ["subnet-pa", "subnet-pb"]
+    app_sg_id          = "sg-app-mock"
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
@@ -41,6 +42,8 @@ inputs = {
   private_subnet_ids = dependency.network.outputs.private_subnet_ids
 
   gateway_sg_id = dependency.gateway.outputs.security_group_id
+  # Let the app/worker reach the Tempo query API (:3200) for Session Check (ADR-022).
+  app_sg_id = dependency.network.outputs.app_sg_id
 
   desired_count = 1
 }

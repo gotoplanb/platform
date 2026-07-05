@@ -84,7 +84,7 @@ inputs = {
 
   private_networking   = local.env.private_networking
   image_repository_url = dependency.ecr.outputs.repository_url
-  app_hostname         = "watch-stg.davestanton.com"          # HTTPS :443 + CSRF/secure cookies (#34)
+  app_hostname         = "watch-stg.davestanton.com" # HTTPS :443 + CSRF/secure cookies (#34)
   certificate_arn      = dependency.cert.outputs.certificate_arn
 
   vpc_id             = dependency.network.outputs.vpc_id
@@ -123,9 +123,10 @@ inputs = {
 
   enable_worker        = true
   worker_desired_count = 1
-  checks_local_mode    = false # enqueue Session Checks to SQS for the worker
-  webhooks_local_mode  = false # enqueue webhook deliveries to SQS for the worker
-  trace_store_provider = "none" # prove the drain first; Tempo wiring is a follow-up
+  checks_local_mode    = false                             # enqueue Session Checks to SQS for the worker
+  webhooks_local_mode  = false                             # enqueue webhook deliveries to SQS for the worker
+  trace_store_provider = "tempo"                           # Session Check queries the staging Tempo (ADR-022)
+  tempo_query_url      = "http://tempo.watch-obs.svc:3200" # Cloud Map DNS, in-VPC (obs/tempo)
 
   session_user_hmac_key_param_arn = dependency.config.outputs.session_user_hmac_key_param_arn
   checks_webhook_secret_param_arn = dependency.config.outputs.checks_webhook_secret_param_arn

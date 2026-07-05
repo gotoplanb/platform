@@ -91,6 +91,20 @@ resource "aws_security_group" "tempo" {
     protocol        = "tcp"
     security_groups = [var.gateway_sg_id]
   }
+  # Query API (:3200) for the app/worker Session Check (ADR-022). Unlike Grafana's (a standalone
+  # rule from the grafana stack, to dodge a cycle), app_sg comes from the network stack Tempo
+  # already depends on — so this is an inline rule here (Tempo owns it → clean teardown), gated so
+  # it's absent until wired.
+  dynamic "ingress" {
+    for_each = var.app_sg_id != "" ? [1] : []
+    content {
+      description     = "Tempo query API from the app/worker (Session Check)"
+      from_port       = local.api_port
+      to_port         = local.api_port
+      protocol        = "tcp"
+      security_groups = [var.app_sg_id]
+    }
+  }
   # Query API (:3200) ingress from Grafana is added by the grafana stack as a standalone rule
   # (grafana's SG doesn't exist yet here — adding it there avoids a dependency cycle).
   egress {
