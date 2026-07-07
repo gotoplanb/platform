@@ -13,6 +13,9 @@ deploy-frontend).
 | [`deploy.sh`](deploy.sh) | `watch-bootstrap` (write) | Promotes latest `main` off the `:bootstrap` seed: starts a pipeline run (same path as a push, #24), waits through Build → DeployStaging → DAST, stops at the prod-approval gate. |
 | [`teardown.sh`](teardown.sh) | `watch-bootstrap` (write) | Destroys the per-env stacks (and the shared pipeline) dependents-first. Keeps the ~$0 foundation by default — state backend, `ecr`, `prod/dns` cert, `account/*`, `github/*` — but drops the `watch`/`status` CNAMEs so a later create is clean. |
 | [`sweep.sh`](sweep.sh) | `watch-ro` (read-only) | Lists *billable* leftovers in the region and exits nonzero if any remain. Excludes the intentionally-kept foundation (tf-state, ECR, cert). |
+| [`doctor.sh`](doctor.sh) | `watch-bootstrap` (read-only calls) | Cross-account state-vs-reality drift: assumes into **both** member accounts and reports **orphans** (billable watch-* live in AWS that teardown missed) and, with `--state`, **ghosts** (tracked in terraform state but absent in AWS). Exits nonzero on orphans. `make doctor`. |
+| [`nuke.sh`](nuke.sh) | `watch-bootstrap` (write) | **Last resort.** Force-deletes ALL billable `watch-*` in a member account, dependency-ordered with waits, keeping the persist-list (tf-state, ECR+`:bootstrap`, ACM certs, `watch-ci-*`/`watch-prod-deploy` IAM, org/account/github). Typed-target confirmation. Use only when `teardown.sh` leaves orphans `doctor.sh` flags. `make nuke TARGET=nonprod`. |
+| [`lib/preflight.sh`](lib/preflight.sh) | — | Sourced by create/teardown/doctor/nuke: fail-fast BEFORE any mutation on a bad AWS identity, missing/malformed member account IDs, or (for DNS ops) a missing `CLOUDFLARE_API_TOKEN`. |
 
 ## Bring everything up from nothing (foundation already exists)
 ```sh

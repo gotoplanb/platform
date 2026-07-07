@@ -10,7 +10,7 @@ export ENV ?= prod
 
 .PHONY: help create create-staging create-prod pipeline up \
         teardown teardown-staging teardown-prod down \
-        sweep recreate migrate seed deploy-frontend deploy live live-finish lambda-promote live-verify
+        sweep doctor nuke tofu-pin recreate migrate seed deploy-frontend deploy live live-finish lambda-promote live-verify
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -49,6 +49,14 @@ deploy: ## Promote latest main off :bootstrap: run the pipeline, wait to the pro
 ## --- verify (read-only: watch-ro) ---
 sweep: ## Billable-orphan check; nonzero exit if anything lingers
 	AWS_PROFILE=watch-ro scripts/sweep.sh
+doctor: ## Cross-account state-vs-reality drift: orphans (billable) + ghosts; nonzero on orphans (#44)
+	scripts/doctor.sh $(if $(SCOPE),$(SCOPE),both)
+
+## --- force-clean (write: watch-bootstrap) — LAST RESORT when teardown leaves orphans ---
+nuke: ## Force-delete ALL billable watch-* in an account, keeping the persist-list (#45): make nuke TARGET=nonprod
+	scripts/nuke.sh $(if $(TARGET),$(TARGET),both)
+tofu-pin: ## Install the repo-pinned OpenTofu into .bin/tofu (.opentofu-version)
+	scripts/tofu-pin.sh
 
 ## --- full cycle ---
 recreate: teardown create ## Teardown then create (fresh both envs)
