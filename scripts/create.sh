@@ -21,7 +21,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-export TG_TF_PATH="${TG_TF_PATH:-tofu}"
+. "$ROOT/scripts/lib/tofu.sh"  # pinned OpenTofu (.bin/tofu, .opentofu-version)
 export AWS_PROFILE="${AWS_PROFILE:-watch-bootstrap}"
 REGION="${AWS_REGION:-us-east-1}"
 BASE="watch/$REGION"

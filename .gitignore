@@ -35,3 +35,6 @@ modules/**/*.zip
 
 # Claude Code personal (per-user) overrides — keep the checked-in policy authoritative
 .claude/settings.local.json
+
+# Repo-pinned OpenTofu binary (scripts/tofu-pin.sh); see .opentofu-version
+.bin/

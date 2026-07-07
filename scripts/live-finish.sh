@@ -17,7 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 [ -n "${WATCH_NONPROD_ACCOUNT_ID:-}${WATCH_PROD_ACCOUNT_ID:-}" ] || { [ -f .env ] && { set -a; . ./.env; set +a; }; }
 export AWS_PROFILE="${AWS_PROFILE:-watch-bootstrap}"
-export TG_TF_PATH="${TG_TF_PATH:-tofu}"
+. "$ROOT/scripts/lib/tofu.sh"  # pinned OpenTofu (.bin/tofu, .opentofu-version)
 REGION="${AWS_REGION:-us-east-1}"
 LAMBDA_ENVS="${LAMBDA_ENVS:-staging}"
 
