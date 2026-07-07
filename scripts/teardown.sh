@@ -5,7 +5,7 @@
 # KEEPS the ~$0 foundation by default — only the hourly-billed per-env stacks (and the
 # shared pipeline, on `both`) are destroyed:
 #   kept: state backend (watch-tfstate-*/watch-tflocks), ecr (the built image),
-#         prod/dns (ACM cert + Cloudflare records — free, slow to revalidate),
+#         <env>/dns + <env>/dns-status (ACM cert + Cloudflare records — free, slow to revalidate),
 #         account/* (budget, github-oidc), github/* (repo config).
 #
 # Usage:
@@ -13,7 +13,7 @@
 #   scripts/teardown.sh both --parallel  # pipeline first, then staging & prod concurrently
 #   scripts/teardown.sh staging          # staging only (leaves prod + pipeline up)
 #   scripts/teardown.sh prod             # prod only
-#   scripts/teardown.sh both --with-dns  # also destroy prod/dns (cert + Cloudflare records)
+#   scripts/teardown.sh both --with-dns  # also destroy each env's dns + dns-status (cert + records)
 #   scripts/teardown.sh both -y          # skip the confirm prompt (automation)
 #
 # Cross-env parallelism is safe: staging and prod are disjoint (separate VPCs/RDS/ALB/CF
@@ -67,8 +67,8 @@ RESULTS="$RESDIR/results"; : > "$RESULTS"
 stacks_for_env() {
   local e="$1" s
   for s in "${ENV_STACKS[@]}"; do echo "$BASE/$e/$s"; done
-  # prod's DNS is split (ADR-020): dns-status (CloudFront record) then dns (API record).
-  { [ "$WITH_DNS" = 1 ] && [ "$e" = prod ]; } && { echo "$BASE/prod/dns-status"; echo "$BASE/prod/dns"; }
+  # DNS is split for BOTH envs (ADR-020): dns-status (CloudFront record) then dns (API record).
+  [ "$WITH_DNS" = 1 ] && { echo "$BASE/$e/dns-status"; echo "$BASE/$e/dns"; }
 }
 
 # destroy_one <dir> — single stack; records OK/FAIL/SKIP (one $RESULTS line, append is atomic)
@@ -94,7 +94,7 @@ aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null || { echo "n
 echo "Region  : $REGION"
 echo "Envs    : ${ENVS[*]}$([ "$DO_PIPELINE" = 1 ] && echo ' (+ pipeline first)')"
 echo "Mode    : $([ "$PARALLEL" = 1 ] && [ "${#ENVS[@]}" -gt 1 ] && echo 'parallel (per-env)' || echo sequential)"
-echo "Kept    : state backend, ecr, connection, ci-trigger, account/*, github/*$([ "$WITH_DNS" = 1 ] && echo '' || echo ', prod/dns')"
+echo "Kept    : state backend, ecr, connection, ci-trigger, account/*, github/*$([ "$WITH_DNS" = 1 ] && echo '' || echo ', <env>/dns+dns-status')"
 
 if [ "$ASSUME_YES" != 1 ]; then
   read -r -p "Proceed? [y/N] " ans
@@ -127,10 +127,9 @@ destroy_dns_records() { # $1 = env — drops the app/status CNAMEs, keeps the AC
   { [ -f "$d/terragrunt.hcl" ] || [ -f "$ds/terragrunt.hcl" ]; } || return 0
   echo "==================== DROP $e CNAME records (keep cert) ===================="
   if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "SKIP   $e dns records (CLOUDFLARE_API_TOKEN unset)" >> "$RESULTS"; return 0; fi
-  # The app record (and status too, for envs that keep both in one stack e.g. staging) live in
-  # $e/dns; prod's status record is split into $e/dns-status (ADR-020). -target matches all count
-  # indices and is a no-op for a record this stack doesn't own.
-  _drop_records "$e/dns records" "$d" cloudflare_record.app cloudflare_record.status
+  # DNS is split for BOTH envs (ADR-020): the app CNAME lives in $e/dns, the status CNAME in
+  # $e/dns-status. -target matches all count indices and is a no-op for a record the stack lacks.
+  _drop_records "$e/dns records" "$d" cloudflare_record.app
   _drop_records "$e/dns-status record" "$ds" cloudflare_record.status
 }
 
