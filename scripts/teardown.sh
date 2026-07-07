@@ -32,8 +32,12 @@ export AWS_PROFILE="${AWS_PROFILE:-watch-bootstrap}"
 REGION="${AWS_REGION:-us-east-1}"
 BASE="watch/$REGION"
 
-# prod/dns's CNAME cleanup (below) drives the cloudflare provider; load its token from .env.
-if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ -f .env ]; then set -a; . ./.env; set +a; fi
+# Load .env ALWAYS — teardown hard-depends on it: WATCH_{NONPROD,PROD}_ACCOUNT_ID drive the
+# cross-account assume-role (root terragrunt.hcl + accounts.hcl); without them the provider stays in
+# the management account and every member-account destroy is AccessDenied. (.env also carries
+# CLOUDFLARE_API_TOKEN for the CNAME cleanup.) The old conditional only worked when the caller's shell
+# happened to have these exported already.
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
 # dependents -> dependencies (the order we destroy within an env). Each stack must be destroyed
 # before the stacks it depends on (dependency blocks only mock for validate/plan, not destroy).
