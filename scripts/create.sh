@@ -37,6 +37,11 @@ REPO=watch
 # prod/dns reads CLOUDFLARE_API_TOKEN; load it from .env (never committed) if not already set.
 if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ -f .env ]; then set -a; . ./.env; set +a; fi
 
+# Fail-fast on missing account IDs / bad AWS identity before any apply (#43). CLOUDFLARE_API_TOKEN
+# stays a soft warning for create (prod/dns tolerates it; see below), so no "dns" arg here.
+. "$ROOT/scripts/lib/preflight.sh"
+preflight create
+
 WHICH="${1:-both}"; [ $# -gt 0 ] && shift
 ASSUME_YES=0
 for a in "$@"; do case "$a" in -y|--yes) ASSUME_YES=1 ;; *) echo "unknown flag: $a" >&2; exit 2 ;; esac; done

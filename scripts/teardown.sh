@@ -39,6 +39,10 @@ BASE="watch/$REGION"
 # happened to have these exported already.
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
+# Fail-fast on missing account IDs / bad AWS identity BEFORE any destroy (#43).
+. "$ROOT/scripts/lib/preflight.sh"
+preflight teardown dns
+
 # dependents -> dependencies (the order we destroy within an env). Each stack must be destroyed
 # before the stacks it depends on (dependency blocks only mock for validate/plan, not destroy).
 # Telemetry plane (#19/#29): app + obs/tempo depend on gateway; obs/grafana depends on obs/tempo;
