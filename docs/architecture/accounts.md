@@ -40,11 +40,15 @@ The re-lay is done and the crux is validated. State of play:
 - **Cross-account promote PROVEN:** a CodeDeploy blue/green in watch-prod, driven by the nonprod
   pipeline identity assuming `watch-prod-deploy`, shifted traffic to a green task set pulling the
   **nonprod ECR image cross-account**. See ADR-020 "Crossing the seam".
-- **Verified:** staging + prod `/api/status` 200 (migrated + seeded); staging status SPA live at
-  `status-stg.davestanton.com` (viewed); obs plane (watch-backend traces in Tempo); prod API live
-  by name at `watch.davestanton.com`.
-- **Blocked on AWS (new-account holds — see below):** pipeline **Build** (CodeBuild), prod
-  **status SPA + `prod/dns-status`** (CloudFront). Case opened.
+- **Verified:** staging + prod `/api/status` 200 (migrated + seeded); obs plane (watch-backend
+  traces in Tempo); **both APIs live by name — `watch.davestanton.com` (prod) and
+  `watch-stg.davestanton.com` (staging) return 200**, independent of the CloudFront hold.
+- **DNS split for parity (ADR-020):** each env's `dns` (app CNAME → ALB) is its own stack with no
+  frontend dependency, so the app hostname comes up even while CloudFront is held; the status CNAME
+  lives in `{env}/dns-status` (→ CloudFront) and stays gated. staging now mirrors prod.
+- **Blocked on AWS (new-account holds — see below):** pipeline **Build** (CodeBuild), and **both
+  envs' status SPA + `{staging,prod}/dns-status`** (CloudFront account-verification, both member
+  accounts). Case opened.
 
 **Console access (member accounts).** Root **cannot switch roles** — make an IAM admin user in
 management (or IAM Identity Center), then switch-role into each member (IDs live in `.env`, never
