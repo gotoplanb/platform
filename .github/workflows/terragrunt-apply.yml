@@ -43,10 +43,15 @@ jobs:
           role-to-assume: ${{ secrets.AWS_GHA_APPLY_ROLE_ARN }}
           aws-region: us-east-1
 
+      # Single-source the tofu version off .opentofu-version so CI and the local scripts can't drift
+      # (a silent bump to 1.12 broke cross-account destroy; #46). Change the pin in ONE file.
+      - name: Read pinned OpenTofu version
+        id: tofu-pin
+        run: echo "version=$(tr -d ' \t\n' < .opentofu-version)" >> "$GITHUB_OUTPUT"
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: "1.12.2"
+          tofu_version: ${{ steps.tofu-pin.outputs.version }}
           tofu_wrapper: false
 
       - name: Install Terragrunt
