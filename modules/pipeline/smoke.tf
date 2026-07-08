@@ -42,7 +42,7 @@ resource "aws_codebuild_project" "smoke" {
 
   environment {
     compute_type = "BUILD_GENERAL1_SMALL"
-    image        = "mcr.microsoft.com/playwright:v1.49.0-jammy" # node + browsers preinstalled
+    image        = "mcr.microsoft.com/playwright:v1.61.1-jammy" # node + browsers preinstalled; keep in lockstep with e2e/package.json
     type         = "LINUX_CONTAINER"
 
     environment_variable {
