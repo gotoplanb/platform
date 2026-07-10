@@ -131,6 +131,16 @@ account (the resource is absent there → create; no state migration). Three thi
 App services are CodeDeploy blue/green → `update-service --force-new-deployment` is rejected; they
 self-heal by retrying placement once the image is pullable. Endpoints 200 = done.
 
+**Don't forget the GitHub-Actions CI plane** — `make create` only re-lays `watch/us-east-1/*`, so the
+CI/CD access wiring is a separate cutover step:
+- **Repoint repo secrets.** `watch`: `AWS_CI_TRIGGER_ROLE_ARN` (the pipeline trigger role — else
+  `trigger-pipeline.yml` fails on push with `PipelineNotFound … in account <old>`). `platform`:
+  `WATCH_NONPROD_ACCOUNT_ID` / `WATCH_PROD_ACCOUNT_ID`. The base `gha-plan`/`gha-apply` roles stay in the
+  **management** account, so `AWS_GHA_*_ROLE_ARN` don't change.
+- **Apply the member-account roles into the new accounts:** `member-ci/{nonprod,prod}` (the read-only
+  `watch-ci-plan` the plan workflow assumes) and re-apply `account/github-oidc` (so `gha-plan` is allowed
+  to assume the **new** `watch-ci-plan` ARNs — it reads `WATCH_*_ACCOUNT_ID`, so repoint `.env` first).
+
 ## Cross-account pipeline deploy — build spec (Option A, ADR-017) — ✅ IMPLEMENTED
 
 All 5 steps below are built (2026-07-03) and the promote is proven; kept as the design record.
