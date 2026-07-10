@@ -26,6 +26,8 @@ resource "aws_iam_role_policy" "dast" {
     Statement = [
       { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.dast.arn}:*" },
       { Effect = "Allow", Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"], Resource = "${aws_s3_bucket.artifacts.arn}/*" },
+      # Artifact bucket is SSE-KMS — decrypt to read the build artifact (same as the build role).
+      { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = aws_kms_key.artifacts.arn },
     ]
   })
 }

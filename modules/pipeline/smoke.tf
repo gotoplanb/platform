@@ -25,6 +25,9 @@ resource "aws_iam_role_policy" "smoke" {
     Statement = [
       { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.smoke.arn}:*" },
       { Effect = "Allow", Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"], Resource = "${aws_s3_bucket.artifacts.arn}/*" },
+      # Artifact bucket is SSE-KMS — decrypt to read the build artifact (the SSM kms:Decrypt below is
+      # scoped to ssm ViaService for the intake secret, so it doesn't cover the artifact CMK).
+      { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = aws_kms_key.artifacts.arn },
       { Effect = "Allow", Action = ["ssm:GetParameters"], Resource = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.staging_intake_secret_param}" },
       # Decrypt the SecureString only via SSM (scoped by ViaService).
       { Effect = "Allow", Action = ["kms:Decrypt"], Resource = "*", Condition = { StringEquals = { "kms:ViaService" = "ssm.${var.region}.amazonaws.com" } } },
