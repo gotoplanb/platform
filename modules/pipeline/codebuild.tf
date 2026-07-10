@@ -32,6 +32,10 @@ resource "aws_iam_role_policy" "build" {
     Statement = [
       { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.build.arn}:*" },
       { Effect = "Allow", Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"], Resource = "${aws_s3_bucket.artifacts.arn}/*" },
+      # The artifact bucket is SSE-KMS (aws_kms_key.artifacts): decrypt to read the source artifact,
+      # generate data keys to write build output. Latent until now — the old nonprod account's
+      # CodeBuild 0-build hold meant Build never ran, so this was never exercised (see accounts.md).
+      { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = aws_kms_key.artifacts.arn },
       { Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = "*" },
       {
         Effect = "Allow"
