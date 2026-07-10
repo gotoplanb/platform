@@ -28,7 +28,10 @@ resource "aws_iam_role_policy" "smoke" {
       # Artifact bucket is SSE-KMS — decrypt to read the build artifact (the SSM kms:Decrypt below is
       # scoped to ssm ViaService for the intake secret, so it doesn't cover the artifact CMK).
       { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = aws_kms_key.artifacts.arn },
-      { Effect = "Allow", Action = ["ssm:GetParameters"], Resource = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.staging_intake_secret_param}" },
+      { Effect = "Allow", Action = ["ssm:GetParameters"], Resource = [
+        "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.staging_intake_secret_param}",
+        "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.staging_checks_secret_param}",
+      ] },
       # Decrypt the SecureString only via SSM (scoped by ViaService).
       { Effect = "Allow", Action = ["kms:Decrypt"], Resource = "*", Condition = { StringEquals = { "kms:ViaService" = "ssm.${var.region}.amazonaws.com" } } },
     ]
@@ -63,6 +66,11 @@ resource "aws_codebuild_project" "smoke" {
     environment_variable {
       name  = "INTAKE_WEBHOOK_SECRET"
       value = var.staging_intake_secret_param
+      type  = "PARAMETER_STORE"
+    }
+    environment_variable {
+      name  = "CHECKS_WEBHOOK_SECRET"
+      value = var.staging_checks_secret_param
       type  = "PARAMETER_STORE"
     }
   }

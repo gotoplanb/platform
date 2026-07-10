@@ -43,6 +43,12 @@ variable "staging_intake_secret_param" {
   default     = "/watch/staging/intake-webhook-secret"
 }
 
+variable "staging_checks_secret_param" {
+  description = "SSM parameter name of the staging checks webhook secret (the session-check dogfood in the smoke posts to /api/checks/webhook, which validates this — distinct from the intake secret)."
+  type        = string
+  default     = "/watch/staging/checks-webhook-secret"
+}
+
 # ---- Shared build artifact (platform#20) ------------------------------------
 
 variable "ecr_repository_url" {
