@@ -47,7 +47,11 @@ STAGE=$(mktemp -d "${TMPDIR:-/tmp}/watch-frontend.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT
 cp -R "$FRONTEND_SRC/." "$STAGE/"
 rm -f "$STAGE/README.md"
-sed -i '' "s|window.WATCH_API = .*;|window.WATCH_API = \"$API_ORIGIN\";|" "$STAGE/index.html"
+# Pin window.WATCH_API to the env's API origin. The SPA self-determines it (query param, else same
+# host) — but the deployed status page lives on status.<domain> while the API is on watch[-stg].<domain>
+# (split domains), so the fallback would point at the wrong host. Replace the whole assignment (now a
+# multi-line expression up to the first ';') with a pinned value — hence perl -0777, not a line-based sed.
+perl -0777 -i -pe "s|window\\.WATCH_API = .*?;|window.WATCH_API = \"$API_ORIGIN\";|s" "$STAGE/index.html"
 grep -q "window.WATCH_API = \"$API_ORIGIN\"" "$STAGE/index.html" || { echo "WATCH_API rewrite failed" >&2; exit 1; }
 
 echo "Syncing to s3://$BUCKET ..."
