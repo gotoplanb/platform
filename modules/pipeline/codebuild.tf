@@ -108,8 +108,12 @@ resource "aws_codebuild_project" "this" {
       value = ""
     }
     environment_variable {
-      name  = "LAMBDA_ENVS"
-      value = "${var.staging.task_family} ${var.prod.task_family}" # function name prefixes
+      name = "LAMBDA_ENVS"
+      # Staging only. Prod's Lambdas live in the prod member account (prod-2, ADR-020), so the build
+      # role (in nonprod) can't update-function-code them in-account — same cross-account boundary the
+      # prod migration hook is deferred for (below). Promote prod Lambdas via lambda-promote.sh /
+      # `make lambda-promote` (assumes cross-account). In-pipeline cross-account promotion is a follow-up.
+      value = var.staging.task_family # function name prefix
     }
     environment_variable {
       name  = "ARTIFACT_BUCKET"
