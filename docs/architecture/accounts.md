@@ -108,6 +108,29 @@ re-lay, not a migration.
 
 Roll back at any point by re-blanking `.env` (everything routes to the current account again).
 
+### Account-**swap** cutover (member A → member B) — proven 2026-07-10, gotchas
+
+Swapping the estate from one member-account pair to another (e.g. the held originals → fresh fallbacks)
+is mostly free **because state is centralized + path-keyed** (account-agnostic): repoint
+`WATCH_{NONPROD,PROD}_ACCOUNT_ID` and re-`make create` — each stack refreshes-and-recreates in the new
+account (the resource is absent there → create; no state migration). Three things that **don't** self-heal:
+
+1. **ARN-keyed resources** — `aws_iam_openid_connect_provider` (ci-trigger) and
+   `aws_codestarconnections_connection` (connection) are refreshed by their **full old-account ARN**, so
+   the cross-account read is `AccessDenied` (a hard error), not "not found → recreate". Fix:
+   `terragrunt state rm` the two, then apply → they recreate in the new account. (The connection comes up
+   `PENDING` → re-authorize in the browser.)
+2. **Seed image must carry every tag the task-defs reference.** The app/worker task-defs pin a commit tag
+   (e.g. `:6d6f335`), and prod pulls it cross-account from nonprod's ECR — so seeding only `:bootstrap`
+   yields `CannotPullContainerError … :<tag>: not found`. Copy the image under **all** referenced tags
+   (or repoint the task-def image to `:bootstrap`).
+3. **Order `prod/deploy` before `pipeline`.** `CreatePipeline` validates it can assume the cross-account
+   `watch-prod-deploy` role at create time; if that role doesn't exist yet you get
+   `InvalidStructureException` — the DAG normally orders it, but a manual per-stack apply must not.
+
+App services are CodeDeploy blue/green → `update-service --force-new-deployment` is rejected; they
+self-heal by retrying placement once the image is pullable. Endpoints 200 = done.
+
 ## Cross-account pipeline deploy — build spec (Option A, ADR-017) — ✅ IMPLEMENTED
 
 All 5 steps below are built (2026-07-03) and the promote is proven; kept as the design record.
