@@ -12,6 +12,30 @@ member accounts along the plane boundary.
 
 (Account IDs live in `~/platform/.env`, not the repo — it's public. See `.env.example`.)
 
+## FIRST STEP for any new member account — pre-flight the service holds (2 min, in the console)
+
+**Before applying *any* Terraform into a freshly created member account, manually confirm it didn't draw
+the new-account anti-abuse holds.** They're stamped **non-deterministically per account at creation** and
+each one blocks the estate, so find out up front — it's a 2-minute console check:
+
+1. **CodeBuild** (blocks CI/CD): create a throwaway "Hello World" build project — a buildspec that just
+   `echo hello` — and **Start build**. If it fails immediately with
+   `AccountLimitExceededException: Cannot have more than 0 builds in queue for the account`, the account
+   has the **CodeBuild hold**. (Only the CI/nonprod account runs CodeBuild, so prod can skip this one.)
+2. **CloudFront** (blocks the status-page frontend): create a throwaway distribution (any origin). If it
+   fails with `AccessDenied: Your account must be verified before you can add new CloudFront resources`,
+   the account has the **CloudFront hold**.
+
+If either is held → file an AWS Support **"Account and billing"** case (free on Basic) from *inside* that
+account — see [`support-case-newaccount-activation.md`](support-case-newaccount-activation.md) /
+[`../support-cases.md`](../support-cases.md) — and either wait for it to lift or use a different account.
+**Delete the test resources afterward** (disable → delete the distribution; delete the build project).
+
+*Why this matters (2026-07):* the first nonprod+prod pair **both** drew holds (no CI/CD, no status pages),
+which wasn't discovered until `make live` failed deep into the apply. A same-day fallback pair
+(`watch-platform-2` / `watch-prod-2`) drew **none** — a 2-minute pre-flight on each would have surfaced
+that immediately and saved days. **Test first, then apply.**
+
 ## How the seam works (`terragrunt.hcl` + `accounts.hcl`)
 
 The root config maps each stack (by path) to a **target account** and generates a provider that
