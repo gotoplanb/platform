@@ -1,0 +1,13 @@
+{
+  "_comment": "Local AWS access portal config. Copy to scripts/aws-portal.json (gitignored) to customize. Account IDs are read from the named env var in your .env (get_env, same as accounts.hcl) so nothing secret is committed to this public repo. management_account_id + identity_center_start_url are optional (display/links only). Colors are 6-hex (AWS switch-role console banner).",
+  "region": "us-east-1",
+  "management_account_id": "",
+  "identity_center_start_url": "",
+  "roles": [
+    { "name": "OrganizationAccountAccessRole", "label": "admin", "color": "F2B0A9" }
+  ],
+  "accounts": [
+    { "name": "watch-nonprod (staging + foundation)", "env_var": "WATCH_NONPROD_ACCOUNT_ID", "id": "", "color": "99BCE3" },
+    { "name": "watch-prod", "env_var": "WATCH_PROD_ACCOUNT_ID", "id": "", "color": "B7CA9D" }
+  ]
+}

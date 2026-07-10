@@ -16,6 +16,7 @@ deploy-frontend).
 | [`doctor.sh`](doctor.sh) | `watch-bootstrap` (read-only calls) | Cross-account state-vs-reality drift: assumes into **both** member accounts and reports **orphans** (billable watch-* live in AWS that teardown missed) and, with `--state`, **ghosts** (tracked in terraform state but absent in AWS). Exits nonzero on orphans. `make doctor`. |
 | [`nuke.sh`](nuke.sh) | `watch-bootstrap` (write) | **Last resort.** Force-deletes ALL billable `watch-*` in a member account, dependency-ordered with waits, keeping the persist-list (tf-state, ECR+`:bootstrap`, ACM certs, `watch-ci-*`/`watch-prod-deploy` IAM, org/account/github). Typed-target confirmation. Use only when `teardown.sh` leaves orphans `doctor.sh` flags. `make nuke TARGET=nonprod`. |
 | [`lib/preflight.sh`](lib/preflight.sh) | — | Sourced by create/teardown/doctor/nuke: fail-fast BEFORE any mutation on a bad AWS identity, missing/malformed member account IDs, or (for DNS ops) a missing `CLOUDFLARE_API_TOKEN`. |
+| [`aws-portal.py`](aws-portal.py) | — (browser) | Zero-dep local "access portal" — serves one page of **switch-role** links per member account (a stand-in for the IAM Identity Center start page). IDs read from `.env` (nothing committed). `make portal` → http://127.0.0.1:8765. Config: `aws-portal.example.json` (copy to gitignored `aws-portal.json` to customize). |
 
 ## Bring everything up from nothing (foundation already exists)
 ```sh

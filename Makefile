@@ -10,7 +10,7 @@ export ENV ?= prod
 
 .PHONY: help create create-staging create-prod pipeline up \
         teardown teardown-staging teardown-prod down \
-        sweep doctor nuke tofu-pin recreate migrate seed deploy-frontend deploy live live-finish lambda-promote live-verify
+        sweep doctor nuke tofu-pin recreate migrate seed deploy-frontend deploy live live-finish lambda-promote live-verify portal
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -76,3 +76,7 @@ lambda-promote: ## Package + promote the escalation/intake Lambdas from ../watch
 	scripts/lambda-promote.sh $(if $(LAMBDA_ENVS),$(LAMBDA_ENVS),staging)
 live-verify: ## Read-only smoke: app+worker services running and the API healthy per env
 	scripts/live-verify.sh both
+
+## --- convenience ---
+portal: ## Local AWS access portal: switch-role links per member account (reads .env). make portal [PORT=8765]
+	python3 scripts/aws-portal.py $(if $(PORT),$(PORT),)

@@ -23,6 +23,9 @@ tofu.log
 *_rsa
 *.auto.tfvars
 
+# Local AWS portal — real config may hold account ids; keep only the .example
+scripts/aws-portal.json
+
 # OS / editor
 .DS_Store
 .idea/
