@@ -50,6 +50,12 @@ locals {
     { name = "AWS_REGION", value = var.region },
     { name = "ESCALATION_STATE_MACHINE_ARN", value = local.escalation_state_machine_arn },
     { name = "ESCALATION_LOCAL_MODE", value = "0" }, # real Step Functions engine (default is local)
+    # AI-drafted RCA via Bedrock (ADR-033). Real Bedrock (default is a local stub); the path is
+    # inert until the `rca_ai_draft` flag is turned on AND Bedrock model access is granted in-account
+    # (manual console step) — until then it soft-fails with a flash, never a 500.
+    { name = "BEDROCK_LOCAL_MODE", value = "0" },
+    { name = "BEDROCK_REGION", value = var.region },
+    { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
     # ALB-only ingress (SG) is the trust boundary; #13 tightens this to the real domain.
     { name = "DJANGO_ALLOWED_HOSTS", value = "*" },
     # Backend-agnostic (ADR-016): always export OTLP to the local Alloy sidecar — never a

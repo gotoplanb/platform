@@ -100,3 +100,25 @@ resource "aws_iam_role_policy" "task_escalation" {
     ]
   })
 }
+
+# AI-drafted RCA (ADR-033): the app invokes a Claude Sonnet model on Bedrock. Least-privilege to
+# Anthropic Claude foundation models (any region the cross-region inference profile routes to) plus
+# this account's inference profiles — NOT bedrock:* on "*". Model *access* is still a separate,
+# per-account console grant; this only authorizes the Invoke once access exists.
+resource "aws_iam_role_policy" "task_bedrock" {
+  name = "${var.name}-bedrock"
+  role = aws_iam_role.task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+        Resource = [
+          "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+          "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*",
+        ]
+      },
+    ]
+  })
+}

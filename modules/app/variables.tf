@@ -89,6 +89,12 @@ variable "appconfig_application_name" {
   type = string
 }
 
+variable "bedrock_model_id" {
+  type        = string
+  description = "Bedrock model/inference-profile id for the AI-drafted RCA (ADR-033). Sonnet by default; access must be granted per account."
+  default     = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+}
+
 variable "appconfig_environment_name" {
   type = string
 }
