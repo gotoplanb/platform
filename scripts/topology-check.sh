@@ -48,6 +48,27 @@ else
   fails=1
 fi
 
+# Foundation pinning (#52): the KEPT stacks (connection, ci-trigger) survive teardown, and
+# their state binds them to the account they were created in. If current routing targets a
+# different account, their next refresh fails AccessDenied (the cycle-C failure mode of the
+# 2026-07-12 rehearsal). Compare each kept stack's state-recorded account to the routing target.
+foundation_target="${WATCH_NONPROD_ACCOUNT_ID:-$hub}"   # foundation class routes to nonprod, else hub
+for stack in connection ci-trigger; do
+  key="watch/us-east-1/${stack}/terraform.tfstate"
+  state_acct=$(aws s3 cp "s3://${bucket}/${key}" - 2>/dev/null \
+    | grep -oE 'arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:' | head -1 | grep -oE '[0-9]{12}' || true)
+  [ -n "$state_acct" ] || { echo "pinning : $stack — no state (never created here); skipping"; continue; }
+  if [ "$state_acct" = "$foundation_target" ]; then
+    echo "pinning : $stack state is in ${state_acct} — matches current routing"
+  else
+    echo "pinning : $stack state is PINNED to ${state_acct}, but current routing targets ${foundation_target}." >&2
+    echo "          Applying it in this topology will fail (AccessDenied on refresh). Destroy it under" >&2
+    echo "          the OLD .env before switching, or accept CI/CD plumbing stays in ${state_acct}" >&2
+    echo "          (docs/TOPOLOGIES.md → 'Switching topologies')." >&2
+    fails=1
+  fi
+done
+
 if [ "${PLAN:-0}" = 1 ] && [ "$fails" = 0 ]; then
   . "$ROOT/scripts/lib/tofu.sh"
   # One cheap stack per routing class: management-routed, member-routed (skipped when

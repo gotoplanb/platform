@@ -42,16 +42,29 @@ if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ -f .env ]; then set -a; . ./.env; set
 . "$ROOT/scripts/lib/preflight.sh"
 preflight create
 
-WHICH="${1:-both}"; [ $# -gt 0 ] && shift
-ASSUME_YES=0
-for a in "$@"; do case "$a" in -y|--yes) ASSUME_YES=1 ;; *) echo "unknown flag: $a" >&2; exit 2 ;; esac; done
+# Order-tolerant args (#53): scope word and flags in any order; bad input is a LOUD fatal.
+WHICH=""; ASSUME_YES=0
+usage_fatal() {
+  echo "==================================================================" >&2
+  echo "FATAL   : bad argument '$1'" >&2
+  echo "usage   : create.sh [staging|prod|both|pipeline] [-y]  (prefer: make create*)" >&2
+  echo "==================================================================" >&2
+  exit 2
+}
+for a in "$@"; do
+  case "$a" in
+    staging|prod|both|pipeline) [ -z "$WHICH" ] || usage_fatal "$a (scope already set to $WHICH)"; WHICH="$a" ;;
+    -y|--yes) ASSUME_YES=1 ;;
+    *) usage_fatal "$a" ;;
+  esac
+done
+WHICH="${WHICH:-both}"
 
 case "$WHICH" in
   staging)  DIR="$BASE/staging" ;;
   prod)     DIR="$BASE/prod" ;;
   both)     DIR="$BASE" ;;               # ecr + staging + prod + prod/dns + pipeline
   pipeline) DIR="$BASE/pipeline" ;;      # re-apply just the pipeline (repoint at current envs, #28)
-  *) echo "usage: create.sh [staging|prod|both|pipeline] [-y]" >&2; exit 2 ;;
 esac
 
 echo "Profile : $AWS_PROFILE"

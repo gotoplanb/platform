@@ -50,22 +50,33 @@ preflight teardown dns
 # obs/* dirs SKIP cleanly. Order: grafana -> tempo -> app -> gateway -> ... -> network.
 ENV_STACKS=(observability frontend intake escalation obs/grafana obs/tempo app gateway config data network)
 
-WHICH="${1:-both}"; [ $# -gt 0 ] && shift
-WITH_DNS=0; ASSUME_YES=0; PARALLEL=0
+# Order-tolerant args (#53): scope word and flags may come in any order; bad input is a
+# LOUD fatal, not a quiet usage line (a `-y`-first invocation once exited rc=2 and the
+# still-running estate read as a failed teardown).
+WHICH=""; WITH_DNS=0; ASSUME_YES=0; PARALLEL=0
+usage_fatal() {
+  echo "==================================================================" >&2
+  echo "FATAL   : bad argument '$1'" >&2
+  echo "usage   : teardown.sh [staging|prod|both] [--parallel] [--with-dns] [-y]" >&2
+  echo "          (prefer: make teardown / teardown-staging / teardown-prod)" >&2
+  echo "==================================================================" >&2
+  exit 2
+}
 for a in "$@"; do
   case "$a" in
+    staging|prod|both) [ -z "$WHICH" ] || usage_fatal "$a (scope already set to $WHICH)"; WHICH="$a" ;;
     --with-dns)  WITH_DNS=1 ;;
     --parallel)  PARALLEL=1 ;;
     -y|--yes)    ASSUME_YES=1 ;;
-    *) echo "unknown flag: $a" >&2; exit 2 ;;
+    *) usage_fatal "$a" ;;
   esac
 done
+WHICH="${WHICH:-both}"
 
 case "$WHICH" in
   staging) ENVS=(staging); DO_PIPELINE=0 ;;
   prod)    ENVS=(prod);    DO_PIPELINE=0 ;;
   both)    ENVS=(staging prod); DO_PIPELINE=1 ;;
-  *) echo "usage: teardown.sh [staging|prod|both] [--parallel] [--with-dns] [-y]" >&2; exit 2 ;;
 esac
 
 RESDIR="$(mktemp -d "${TMPDIR:-/tmp}/watch-teardown.XXXXXX")"
@@ -108,6 +119,32 @@ if [ "$ASSUME_YES" != 1 ]; then
   read -r -p "Proceed? [y/N] " ans
   [[ "$ans" =~ ^[Yy]$ ]] || { echo "aborted"; exit 1; }
 fi
+
+# Teardown mitigations (#51), both verified in the 2026-07-12 three-topology rehearsal:
+#   (a) stop RUNNING watch-<env> Step Functions executions — DeleteStateMachine otherwise sits
+#       in DELETING past the provider's 5m wait when a seeded incident's execution is live;
+#   (b) ensure AppConfig deletion protection is off — fast/parallel teardowns reach <env>/config
+#       within the "recently retrieved" window and get BadRequestException otherwise.
+# Raw-CLI, per target account, via xacct (no-op single-account). Best-effort: failures warn,
+# never block the destroys (terragrunt remains the authority).
+. "$ROOT/scripts/lib/xacct.sh"
+for e in "${ENVS[@]}"; do
+  (
+    xacct_assume "$(xacct_account_for "$e")" >/dev/null || exit 0
+    aws appconfig update-account-settings --region "$REGION" \
+      --deletion-protection Enabled=false >/dev/null 2>&1 \
+      && echo "Mitigate: $e AppConfig deletion protection off"
+    arn=$(aws stepfunctions list-state-machines --region "$REGION" \
+      --query "stateMachines[?name=='watch-${e}'].stateMachineArn|[0]" --output text 2>/dev/null)
+    [ -n "$arn" ] && [ "$arn" != "None" ] || exit 0
+    n=0
+    for x in $(aws stepfunctions list-executions --region "$REGION" --state-machine-arn "$arn" \
+                 --status-filter RUNNING --query 'executions[].executionArn' --output text 2>/dev/null); do
+      aws stepfunctions stop-execution --region "$REGION" --execution-arn "$x" >/dev/null 2>&1 && n=$((n+1))
+    done
+    [ "$n" -gt 0 ] && echo "Mitigate: $e stopped $n running execution(s) on watch-$e"
+  ) || echo "WARN    : teardown mitigations failed for $e (continuing — destroys may be slower)" >&2
+done
 
 # The watch/status CNAMEs point at the ALB/CloudFront we're about to destroy. Remove just
 # those two records (keep the ACM cert + validation records — slow to revalidate) so a later
