@@ -15,6 +15,14 @@ assume-role. State always lives in the hub account's bucket.
 Verify any topology before applying: **`make topology-check`** (read-only; `PLAN=1` adds
 representative terragrunt plans).
 
+**Regression protection (Terratest, `test/`):** `make test-topology` renders every routing
+class under all three topologies (plus the `WATCH_PROJECT` rename knob) and asserts the
+generated provider targets the right account with the right assume-role — fast, mutation-free,
+fake member ids, read-only creds, so it runs anywhere. `make test-member-access` is the one
+real apply/assume/destroy Terratest (opt-in; hub admin creds) proving the invited-account
+role module end to end. Evolve the routing map or the knobs, and these fail before an adopter
+does.
+
 ---
 
 ## 1. Single account

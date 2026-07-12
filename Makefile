@@ -55,6 +55,12 @@ doctor: ## Cross-account state-vs-reality drift: orphans (billable) + ghosts; no
 topology-check: ## Verify the configured deployment topology (read-only; PLAN=1 adds terragrunt plans) (#50)
 	scripts/topology-check.sh
 
+test-topology: ## Terratest: routing contract across all 3 topologies — fast, read-only, fake member ids (#50)
+	cd test && go test -run 'TestTopologyRouting|TestProjectRenameKnob' -v -timeout 15m
+
+test-member-access: ## Terratest: REAL apply/assume/destroy of member-access into the nonprod member (hub admin creds) (#50)
+	cd test && RUN_MEMBER_ACCESS_TEST=1 go test -run TestMemberAccessRole -v -timeout 15m
+
 ## --- force-clean (write: watch-bootstrap) — LAST RESORT when teardown leaves orphans ---
 nuke: ## Force-delete ALL billable watch-* in an account, keeping the persist-list (#45): make nuke TARGET=nonprod
 	scripts/nuke.sh $(if $(TARGET),$(TARGET),both)

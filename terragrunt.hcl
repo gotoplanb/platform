@@ -38,7 +38,10 @@ locals {
   # Which role the provider assumes in the target member account. Defaults to the admin
   # OrganizationAccountAccessRole (local dev, bootstrap, CI apply). The plan-on-PR CI job sets
   # WATCH_MEMBER_ROLE_NAME=watch-ci-plan so plan assumes the READ-ONLY member role instead (ADR-020).
-  member_role_name = get_env("WATCH_MEMBER_ROLE_NAME", "OrganizationAccountAccessRole")
+  # Empty-string coalesces to the default (not just unset) so a blank WATCH_MEMBER_ROLE_NAME= in
+  # .env behaves like the shell scripts' ${VAR:-default} — terragrunt and xacct must never disagree
+  # on the role (caught by test/topology_test.go, platform#50).
+  member_role_name = get_env("WATCH_MEMBER_ROLE_NAME", "") != "" ? get_env("WATCH_MEMBER_ROLE_NAME", "") : "OrganizationAccountAccessRole"
 
   # Base creds live in the management account and assume OrganizationAccountAccessRole into the
   # target member account. State stays centralized in the management bucket for now (per-member

@@ -13,7 +13,7 @@ no click-ops.
 - **[docs/architecture/](docs/architecture/)** — how it fits together: [stacks](docs/architecture/stacks.md),
   [runtime](docs/architecture/runtime.md), [delivery](docs/architecture/delivery.md), [foundations](docs/architecture/foundations.md).
 - **[docs/TOPOLOGIES.md](docs/TOPOLOGIES.md)** — deploy into a single account, two members of a NEW org,
-  or two members of an EXISTING org (#50): same code, `.env` chooses; `make topology-check` verifies.
+  or two members of an EXISTING org (#50): same code, `.env` chooses; `make topology-check` verifies, Terratest (`make test-topology`) guards regressions.
 - **[ROLLOUT.md](ROLLOUT.md)** — the rollout plan + sequence + cost profiles.
 - **[GOTCHAS.md](GOTCHAS.md)** — traps discovered building it · **[docs/releases/](docs/releases/)** — per-version changes.
 - Decisions/tradeoffs (ADRs) live in `gotoplanb/watch` → `watch-adrs.md`.
