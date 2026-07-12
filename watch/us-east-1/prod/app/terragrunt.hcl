@@ -121,7 +121,9 @@ inputs = {
   # Promote-by-digest (ADR-017): prod runs the SAME digest staging proved. Pinned here while the
   # CodeBuild promote is on hold; the app SERVICE is shifted to it via a manual cross-account
   # CodeDeploy. The worker task-def uses this image too.
-  image_uri = "${dependency.ecr.outputs.repository_url}:6d6f335"
+  # image_uri stays EMPTY => the module's :bootstrap fallback (its designed contract) —
+  # a pinned sha here breaks any fresh account whose ECR lacks that build (found in the
+  # 2026-07-12 three-topology lifecycle test). The pipeline promotes real builds by digest.
 
   enable_worker        = true
   worker_desired_count = 1

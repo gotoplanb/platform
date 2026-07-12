@@ -119,7 +119,9 @@ inputs = {
   # Pin the app image to the manually-built digest (CodeBuild promote is on hold): this also
   # feeds the worker task-def. The app SERVICE ignores task_definition (CodeDeploy owns it), so
   # the running app is shifted via a manual CodeDeploy of this same revision.
-  image_uri = "${dependency.ecr.outputs.repository_url}:6d6f335"
+  # image_uri stays EMPTY => the module's :bootstrap fallback (its designed contract) —
+  # a pinned sha here breaks any fresh account whose ECR lacks that build (found in the
+  # 2026-07-12 three-topology lifecycle test). The pipeline promotes real builds by digest.
 
   enable_worker        = true
   worker_desired_count = 1

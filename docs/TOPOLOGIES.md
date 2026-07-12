@@ -87,6 +87,35 @@ the lock table (`<project>-tflocks`), and the default `project` tag in one place
 same prefix to `./bootstrap` (`-var state_bucket_prefix=… -var lock_table_name=…`).
 Stack-level resource names inherit `project` from each env's `env.hcl`.
 
+## First boot in a fresh account
+
+`create.sh` refuses to apply until the ECR repo holds a seedable image (the app task def
+pulls `:bootstrap`). In an account that has never run the estate (a new single-account
+setup, or a rebuilt member), bootstrap in this order (verified 2026-07-12):
+
+```bash
+(cd watch/us-east-1/ecr && terragrunt apply)          # the repo, alone
+docker build --platform linux/amd64 -t watch:seed <app-repo>/backend
+docker tag … <account>.dkr.ecr.<region>.amazonaws.com/watch:seed && docker push …
+make create                                            # self-heals :bootstrap from :seed
+```
+
+Never commit a pinned image sha into an app stack's `image_uri` — it binds the estate to
+one account's ECR history and breaks every fresh account (and with the CodeDeploy
+deployment controller, a live service can't be re-pointed by re-apply alone).
+
+## Switching topologies on an existing installation
+
+The **disposable estate** switches topologies freely: teardown, change `.env`, create.
+The **kept foundation stacks do not** — `connection` and `ci-trigger` survive teardown,
+and their state binds them to the account they were created in. Re-applying them under a
+different topology fails on refresh (AccessDenied reading the other account's resources).
+Before switching, `terragrunt destroy` those stacks under the OLD `.env` (a fresh
+CodeStar connection then needs its one-time authorization again), or accept that CI/CD
+plumbing stays in the original account. Also disable AppConfig deletion protection per
+account (`aws appconfig update-account-settings --deletion-protection Enabled=false`) or
+fast teardowns will trip it — see GOTCHAS.
+
 ## Guardrails
 
 `scripts/lib/preflight.sh` enforces the 0-or-2 rule: if **either** member ID is set, **both**

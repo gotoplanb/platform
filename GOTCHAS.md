@@ -169,3 +169,19 @@ resolve via `/ui`; promote-by-digest (identical sha256 staging+prod); HTTPS-only
 `watch.davestanton.com` (app) + `status.davestanton.com` (status SPA), CSRF login working,
 root landing page, daily cost budget. Remaining: #17 DevOps Agent, #32 DAST, and the
 observability/account-seam follow-ups (#18/#19/#21/#22/#23/#25/#28/#29/#30/#31).
+
+- **Fast teardowns trip AppConfig deletion protection.** AppConfig refuses to delete a
+  configuration profile/environment retrieved by a client within the protection window
+  (~1h): `BadRequestException: Configuration Profile flags is actively being used`. A
+  *parallel* teardown reaches `<env>/config` minutes after the app stopped polling, so it
+  fails where a slow teardown never did. Fix (one-time per member account, right for
+  disposable estates): `aws appconfig update-account-settings --deletion-protection
+  Enabled=false`, then re-run — teardown is idempotent. (Found 2026-07-12, cycle B of the
+  three-topology lifecycle test.)
+
+- **Teardown right after seeding can lose the Step Functions delete race.** `seed_demo`'s
+  demo incident leaves a RUNNING escalation execution; `DeleteStateMachine` sits in
+  `DELETING` until executions end, and the provider gives up after 5m → escalation stack
+  errors, dependents skipped (free-tier remnants; sweep stays clean). Either stop running
+  `watch-*` executions before teardown (verified: cycle B pre-stopped 1 staging execution
+  and the SFN delete raced clean) or just re-run teardown after the SLA timers drain.
