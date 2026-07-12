@@ -61,6 +61,10 @@ test-topology: ## Terratest: routing contract across all 3 topologies — fast, 
 test-member-access: ## Terratest: REAL apply/assume/destroy of member-access into the nonprod member (hub admin creds) (#50)
 	cd test && RUN_MEMBER_ACCESS_TEST=1 go test -run TestMemberAccessRole -v -timeout 15m
 
+install-hooks: ## Install the pre-commit topology gate (core.hooksPath -> .githooks) (#50)
+	git config core.hooksPath .githooks
+	@echo "pre-commit topology gate installed (SKIP_TOPOLOGY=1 to bypass)"
+
 ## --- force-clean (write: watch-bootstrap) — LAST RESORT when teardown leaves orphans ---
 nuke: ## Force-delete ALL billable watch-* in an account, keeping the persist-list (#45): make nuke TARGET=nonprod
 	scripts/nuke.sh $(if $(TARGET),$(TARGET),both)

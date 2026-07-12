@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pre-commit gate (platform#50): the topology routing contract must be GREEN to commit.
+# Runs the fast Terratest matrix (test/ — render-level, read-only, fake member ids, ~15s)
+# whenever staged changes could affect routing: any *.hcl, the test suite itself, the
+# lifecycle script libs, or the Makefile. Red = no commit.
+#
+# Install once:  make install-hooks   (sets core.hooksPath)
+# Escape hatch:  SKIP_TOPOLOGY=1 git commit …   (sparingly — CI runs the same suite on PRs)
+set -euo pipefail
+
+staged=$(git diff --cached --name-only)
+echo "$staged" | grep -qE '\.hcl$|^test/|^scripts/lib/|^Makefile$|^member-access/' || exit 0
+
+if [ "${SKIP_TOPOLOGY:-0}" = 1 ]; then
+  echo "[pre-commit] SKIP_TOPOLOGY=1 — topology gate skipped (CI will still run it)" >&2
+  exit 0
+fi
+
+command -v go >/dev/null || {
+  echo "[pre-commit] FAIL: go not installed (brew install go) — or SKIP_TOPOLOGY=1 to bypass" >&2
+  exit 1; }
+
+# The render tests need only STS GetCallerIdentity — the read-only profile is enough.
+export AWS_PROFILE="${AWS_PROFILE:-watch-ro}"
+
+echo "[pre-commit] topology routing contract (make test-topology, ~15s)…"
+if (cd "$(git rev-parse --show-toplevel)/test" \
+    && go test -run 'TestTopologyRouting|TestProjectRenameKnob' -timeout 10m >/tmp/topology-gate.log 2>&1); then
+  echo "[pre-commit] ✓ topology contract green"
+else
+  echo "[pre-commit] ✗ topology contract RED — commit blocked. Detail:" >&2
+  tail -30 /tmp/topology-gate.log >&2
+  exit 1
+fi
