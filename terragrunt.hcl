@@ -10,6 +10,11 @@ locals {
   region  = "us-east-1"
   current = get_aws_account_id()
 
+  # Boilerplate rename knob (platform#50): one env var renames the state bucket/lock-table
+  # prefix and the default project tag. Default keeps this estate exactly as-is. If you change
+  # it, pass the same prefix to ./bootstrap (-var state_bucket_prefix / lock_table_name).
+  project = get_env("WATCH_PROJECT", "watch")
+
   # Multi-account routing (ADR-020). Map each stack (by path) to its target account; blank member
   # ids in accounts.hcl fall back to the current account, so this is a NO-OP for the single-account
   # estate until the ids are filled.
@@ -49,11 +54,11 @@ remote_state {
     if_exists = "overwrite_terragrunt"
   }
   config = {
-    bucket         = "watch-tfstate-${local.account_id}"
+    bucket         = "${local.project}-tfstate-${local.account_id}"
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = local.region
     encrypt        = true
-    dynamodb_table = "watch-tflocks"
+    dynamodb_table = "${local.project}-tflocks"
     # Bucket/table are created explicitly by ./bootstrap — don't let Terragrunt mutate them.
     disable_bucket_update = true
   }
@@ -69,7 +74,7 @@ generate "provider" {
       ${local.assume_role_block}
       default_tags {
         tags = {
-          project    = "watch"
+          project    = "${local.project}"
           managed_by = "terragrunt"
           repo       = "gotoplanb/platform"
         }

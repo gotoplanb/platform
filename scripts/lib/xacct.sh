@@ -1,4 +1,5 @@
-# Cross-account helper (ADR-020). Assume OrganizationAccountAccessRole into the member account for
+# Cross-account helper (ADR-020). Assume the member role (WATCH_MEMBER_ROLE_NAME, default
+# OrganizationAccountAccessRole — platform#50 existing-org topology) into the member account for
 # a given env, so the raw-AWS-CLI lifecycle steps (ecs run-task, s3 sync, StartPipeline) hit the
 # right account. The base creds (AWS_PROFILE) must be in the MANAGEMENT account. Read the member
 # ids from the environment (source .env first). Blank ids => single-account mode => no-op.
@@ -19,7 +20,7 @@ xacct_assume() { # $1 = account id; exports temp creds for it. Blank => no-op (s
   local acct="$1" creds
   [ -n "$acct" ] || return 0
   creds=$(aws sts assume-role \
-    --role-arn "arn:aws:iam::${acct}:role/OrganizationAccountAccessRole" \
+    --role-arn "arn:aws:iam::${acct}:role/${WATCH_MEMBER_ROLE_NAME:-OrganizationAccountAccessRole}" \
     --role-session-name "watch-lifecycle-$$" \
     --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text) || {
     echo "xacct: failed to assume into ${acct}" >&2

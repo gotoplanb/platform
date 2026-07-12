@@ -27,5 +27,9 @@ preflight() { # $1 = mode label (create|teardown|deploy|...); $2 = "dns" if the 
     echo "FATAL   : CLOUDFLARE_API_TOKEN unset — DNS ($mode) will fail. Source .env." >&2; errs=1; fi
 
   [ "$errs" = 0 ] || { echo "preflight ($mode): FAILED — aborting before any mutation." >&2; exit 1; }
-  echo "preflight ($mode): ok — caller=$who cross-account=$([ -n "${WATCH_NONPROD_ACCOUNT_ID:-}" ] && echo yes || echo no)"
+  # Name the detected topology (platform#50): blank-both member ids = single-account; both set =
+  # two-member (org-created or existing-org — same mechanics, only the role name differs).
+  local topo="single-account"
+  [ -n "${WATCH_NONPROD_ACCOUNT_ID:-}" ] && topo="two-member (role=${WATCH_MEMBER_ROLE_NAME:-OrganizationAccountAccessRole})"
+  echo "preflight ($mode): ok — caller=$who topology=$topo cross-account=$([ -n "${WATCH_NONPROD_ACCOUNT_ID:-}" ] && echo yes || echo no)"
 }

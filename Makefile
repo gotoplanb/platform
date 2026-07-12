@@ -52,6 +52,9 @@ sweep: ## Billable-orphan check; nonzero exit if anything lingers
 doctor: ## Cross-account state-vs-reality drift: orphans (billable) + ghosts; nonzero on orphans (#44)
 	scripts/doctor.sh $(if $(SCOPE),$(SCOPE),both)
 
+topology-check: ## Verify the configured deployment topology (read-only; PLAN=1 adds terragrunt plans) (#50)
+	scripts/topology-check.sh
+
 ## --- force-clean (write: watch-bootstrap) — LAST RESORT when teardown leaves orphans ---
 nuke: ## Force-delete ALL billable watch-* in an account, keeping the persist-list (#45): make nuke TARGET=nonprod
 	scripts/nuke.sh $(if $(TARGET),$(TARGET),both)
