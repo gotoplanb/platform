@@ -76,3 +76,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "permissions_boundary" {
+  description = "Permissions boundary applied to every role this module creates (ADR-044). Empty = none, for estates that have not adopted the fence."
+  type        = string
+  default     = ""
+}

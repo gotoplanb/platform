@@ -9,6 +9,20 @@
 set -euo pipefail
 
 staged=$(git diff --cached --name-only)
+
+# The IAM policy gate (ADR-044). Cheap, needs no AWS, and guards the one thing a security team was
+# promised: that the provisioner cannot mint itself an admin role. Any policy or IAM-role change
+# re-proves it. Red = no commit.
+if echo "$staged" | grep -qE '^policies/|^modules/.*\.tf$|^scripts/policy-check\.sh$'; then
+  if [ "${SKIP_POLICY:-0}" = 1 ]; then
+    echo "[pre-commit] SKIP_POLICY=1 — IAM policy gate skipped (CI will still run it)" >&2
+  else
+    echo "[pre-commit] IAM policy + boundary fence (make policy-check)…"
+    "$(git rev-parse --show-toplevel)/scripts/policy-check.sh" || {
+      echo "[pre-commit] ✗ policy gate RED — commit blocked" >&2; exit 1; }
+  fi
+fi
+
 echo "$staged" | grep -qE '\.hcl$|^test/|^scripts/lib/|^Makefile$|^member-access/' || exit 0
 
 if [ "${SKIP_TOPOLOGY:-0}" = 1 ]; then

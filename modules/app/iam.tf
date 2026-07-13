@@ -16,9 +16,10 @@ data "aws_iam_policy_document" "ecs_assume" {
 # ---- Execution role ---------------------------------------------------------
 
 resource "aws_iam_role" "execution" {
-  name               = "${var.name}-exec"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-exec"
+  assume_role_policy   = data.aws_iam_policy_document.ecs_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "execution_managed" {
@@ -62,9 +63,10 @@ resource "aws_iam_role_policy_attachment" "execution_db_secret" {
 # ---- Task role --------------------------------------------------------------
 
 resource "aws_iam_role" "task" {
-  name               = "${var.name}-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-task"
+  assume_role_policy   = data.aws_iam_policy_document.ecs_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 # AppConfig Agent reads the flag profile (#5).

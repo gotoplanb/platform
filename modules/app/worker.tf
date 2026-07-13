@@ -46,10 +46,11 @@ resource "aws_iam_role_policy" "task_sqs_send" {
 # Worker task role: receive/delete/attrs to drain, plus SendMessage (a completed check emits
 # check.completed, which itself enqueues a delivery — ADR-023). Reads flags via AppConfig.
 resource "aws_iam_role" "worker_task" {
-  count              = var.enable_worker ? 1 : 0
-  name               = "${var.name}-worker-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
-  tags               = var.tags
+  count                = var.enable_worker ? 1 : 0
+  name                 = "${var.name}-worker-task"
+  assume_role_policy   = data.aws_iam_policy_document.ecs_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "worker_appconfig" {

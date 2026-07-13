@@ -16,9 +16,10 @@ data "aws_iam_policy_document" "assume" {
 resource "aws_iam_role" "this" {
   # CodeDeploy service role. Suffixed -codedeploy (not -deploy) so it never collides with the
   # cross-account assume role watch-prod-deploy, which shares this module's parent name (ADR-020).
-  name               = "${var.name}-codedeploy"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = var.tags
+  name                 = "${var.name}-codedeploy"
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "ecs" {

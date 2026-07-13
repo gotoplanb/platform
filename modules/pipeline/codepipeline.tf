@@ -13,9 +13,10 @@ data "aws_iam_policy_document" "pipeline_assume" {
 }
 
 resource "aws_iam_role" "pipeline" {
-  name               = "${var.name}-pipeline"
-  assume_role_policy = data.aws_iam_policy_document.pipeline_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-pipeline"
+  assume_role_policy   = data.aws_iam_policy_document.pipeline_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy" "pipeline" {

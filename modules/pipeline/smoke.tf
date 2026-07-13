@@ -12,9 +12,10 @@ resource "aws_cloudwatch_log_group" "smoke" {
 }
 
 resource "aws_iam_role" "smoke" {
-  name               = "${var.name}-smoke"
-  assume_role_policy = data.aws_iam_policy_document.build_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-smoke"
+  assume_role_policy   = data.aws_iam_policy_document.build_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy" "smoke" {
@@ -76,7 +77,7 @@ resource "aws_codebuild_project" "smoke" {
   }
 
   source {
-    type = "CODEPIPELINE"
+    type      = "CODEPIPELINE"
     buildspec = <<-YAML
       version: 0.2
       phases:

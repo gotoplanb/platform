@@ -103,10 +103,11 @@ data "aws_iam_policy_document" "hook_assume" {
 }
 
 resource "aws_iam_role" "hook" {
-  for_each           = local.hook_envs
-  name               = "${var.name}-${each.key}-deploy-hook"
-  assume_role_policy = data.aws_iam_policy_document.hook_assume.json
-  tags               = var.tags
+  for_each             = local.hook_envs
+  name                 = "${var.name}-${each.key}-deploy-hook"
+  assume_role_policy   = data.aws_iam_policy_document.hook_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "hook_basic" {

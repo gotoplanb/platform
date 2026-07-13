@@ -8,7 +8,7 @@ export AWS_REGION ?= us-east-1
 
 export ENV ?= prod
 
-.PHONY: help create create-staging create-prod pipeline up \
+.PHONY: help create create-staging create-prod pipeline up policy-check policies \
         teardown teardown-staging teardown-prod down \
         sweep doctor nuke tofu-pin recreate migrate seed deploy-frontend deploy live live-finish lambda-promote live-verify portal
 
@@ -54,6 +54,12 @@ doctor: ## Cross-account state-vs-reality drift: orphans (billable) + ghosts; no
 
 topology-check: ## Verify the configured deployment topology (read-only; PLAN=1 adds terragrunt plans) (#50)
 	scripts/topology-check.sh
+
+policy-check: ## IAM policy gate: documents valid + the permissions-boundary fence intact (ADR-044)
+	scripts/policy-check.sh
+
+policies: ## Render the IAM policies concrete, to hand to a security team (OUT=dir to write files)
+	scripts/render-policies.sh
 
 test-topology: ## Terratest: routing contract across all 3 topologies — fast, read-only, fake member ids (#50)
 	cd test && go test -run 'TestTopologyRouting|TestProjectRenameKnob' -v -timeout 15m

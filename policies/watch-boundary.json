@@ -1,0 +1,68 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EstateRolesMayUseTheAccount",
+      "Effect": "Allow",
+      "Action": "*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ButNeverGrantThemselvesMoreIam",
+      "Effect": "Deny",
+      "NotAction": [
+        "iam:Get*",
+        "iam:List*",
+        "iam:Generate*",
+        "iam:Simulate*",
+        "iam:PassRole",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:CreateServiceLinkedRole"
+      ],
+      "Resource": "arn:aws:iam::*:*"
+    },
+    {
+      "Sid": "NeverEscapeTheBoundaryItself",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteUserPermissionsBoundary",
+        "iam:PutUserPermissionsBoundary"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NeverTouchTheOrgTheAccountOrTheBilling",
+      "Effect": "Deny",
+      "Action": [
+        "organizations:*",
+        "account:Put*",
+        "account:Delete*",
+        "account:Close*",
+        "aws-portal:*",
+        "billing:*",
+        "payments:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NeverDestroyTheAuditTrailOrTheState",
+      "Effect": "Deny",
+      "Action": [
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:StopLogging",
+        "cloudtrail:UpdateTrail",
+        "config:Delete*",
+        "config:Stop*",
+        "guardduty:Delete*",
+        "guardduty:Disassociate*",
+        "s3:DeleteBucket",
+        "s3:PutBucketPolicy",
+        "dynamodb:DeleteTable"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

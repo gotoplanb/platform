@@ -20,9 +20,10 @@ data "aws_iam_policy_document" "apigw_assume" {
 }
 
 resource "aws_iam_role" "apigw" {
-  name               = "${var.name}-intake-apigw"
-  assume_role_policy = data.aws_iam_policy_document.apigw_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-intake-apigw"
+  assume_role_policy   = data.aws_iam_policy_document.apigw_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy" "apigw_sqs" {

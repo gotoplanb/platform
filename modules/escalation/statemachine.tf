@@ -27,9 +27,10 @@ data "aws_iam_policy_document" "sfn_assume" {
 }
 
 resource "aws_iam_role" "sfn" {
-  name               = "${var.name}-escalation-sfn"
-  assume_role_policy = data.aws_iam_policy_document.sfn_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-escalation-sfn"
+  assume_role_policy   = data.aws_iam_policy_document.sfn_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy" "sfn" {

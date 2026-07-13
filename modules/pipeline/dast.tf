@@ -13,9 +13,10 @@ resource "aws_cloudwatch_log_group" "dast" {
 }
 
 resource "aws_iam_role" "dast" {
-  name               = "${var.name}-dast"
-  assume_role_policy = data.aws_iam_policy_document.build_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-dast"
+  assume_role_policy   = data.aws_iam_policy_document.build_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy" "dast" {
@@ -57,7 +58,7 @@ resource "aws_codebuild_project" "dast" {
   }
 
   source {
-    type = "CODEPIPELINE"
+    type      = "CODEPIPELINE"
     buildspec = <<-YAML
       version: 0.2
       phases:

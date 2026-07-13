@@ -27,3 +27,20 @@ variable "member_plan_role_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "provisioner_role_arns" {
+  description = <<-EOT
+    The provisioner roles (this account's and each member's) that the APPLY role may assume (ADR-044).
+    Non-empty means CI apply holds no powers of its own — it can only become the provisioner, whose
+    rights are the reviewable documents in policies/. Empty falls back to the legacy AdministratorAccess
+    attachment, for an estate that hasn't adopted the fence yet.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
+variable "permissions_boundary" {
+  description = "Permissions boundary applied to every role this module creates (ADR-044). Empty = none, for estates that have not adopted the fence."
+  type        = string
+  default     = ""
+}
