@@ -5,6 +5,10 @@
 module "staging" {
   source                  = "../codedeploy"
   name                    = "${var.name}-staging"
+  # ADR-044: the boundary must be threaded to CHILD modules explicitly — the Terragrunt root input
+  # only reaches the root module, so a child role would be created unfenced (and iam:CreateRole
+  # rightly denied). Caught by the live rehearsal, now asserted by scripts/policy-check.sh.
+  permissions_boundary    = var.permissions_boundary
   deploy_config_name      = var.deploy_config_name
   cluster_name            = var.staging.cluster_name
   service_name            = var.staging.service_name

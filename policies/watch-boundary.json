@@ -18,7 +18,10 @@
         "iam:PassRole",
         "iam:TagRole",
         "iam:UntagRole",
-        "iam:CreateServiceLinkedRole"
+        "iam:CreateServiceLinkedRole",
+        "sts:AssumeRole",
+        "sts:TagSession",
+        "sts:GetCallerIdentity"
       ],
       "Resource": "arn:aws:iam::*:*"
     },

@@ -54,6 +54,7 @@ variable "tags" {
 module "codedeploy" {
   source                  = "../codedeploy"
   name                    = var.name
+  permissions_boundary    = var.permissions_boundary  # ADR-044: child modules need it passed explicitly
   cluster_name            = var.cluster_name
   service_name            = var.service_name
   production_listener_arn = var.production_listener_arn
@@ -66,6 +67,7 @@ module "codedeploy" {
 
 module "deploy_role" {
   source               = "../xacct-deploy-role"
+  permissions_boundary = var.permissions_boundary  # ADR-044: child modules need it passed explicitly
   name                 = "${var.name}-deploy" # watch-prod-deploy (predictable ARN for the pipeline)
   trusted_account_id   = var.trusted_account_id
   artifact_bucket_arn  = var.artifact_bucket_arn
