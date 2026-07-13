@@ -15,27 +15,29 @@ locals {
   # it, pass the same prefix to ./bootstrap (-var state_bucket_prefix / lock_table_name).
   project = get_env("WATCH_PROJECT", "watch")
 
-  # Multi-account routing (ADR-020). Map each stack (by path) to its target account; blank member
-  # ids in accounts.hcl fall back to the current account, so this is a NO-OP for the single-account
-  # estate until the ids are filled.
+  # Multi-account routing (ADR-020). Map each stack (by path) to its target account. accounts.hcl
+  # already resolves a blank member id to the current account, so this is a NO-OP for the
+  # single-account estate until the ids are filled — and it resolves it in ONE place, which is the
+  # point: this routing used to coalesce the blank itself, so a stack that read the raw env var and
+  # rendered "arn:aws:iam:::root" stayed invisible until an apply (platform#58).
   acct = read_terragrunt_config(find_in_parent_folders("accounts.hcl")).locals
   rel  = path_relative_to_include()
-  want = (
+  target = (
     # All account-level governance -> management (= current): the org, the platform-repo CI base
     # (OIDC provider + plan/apply roles + the account that assumes into members), and the
     # consolidated-billing budgets / cost-allocation-tag activation (payer-account only). None of
     # these belong in a member account; routing them to nonprod was a dormant landmine (ADR-020).
-    startswith(local.rel, "account/")                  ? local.current :
-    startswith(local.rel, "member-ci/nonprod")         ? local.acct.nonprod_account_id : # read-only CI plan role in nonprod
-    startswith(local.rel, "member-ci/prod")            ? local.acct.prod_account_id :    # read-only CI plan role in prod
-    startswith(local.rel, "member-iam/nonprod")        ? local.acct.nonprod_account_id : # provisioner role + boundary (ADR-044)
-    startswith(local.rel, "member-iam/prod")           ? local.acct.prod_account_id :
-    startswith(local.rel, "watch/us-east-1/prod/")     ? local.acct.prod_account_id :
-    startswith(local.rel, "watch/us-east-1/staging/")  ? local.acct.nonprod_account_id :
+    startswith(local.rel, "account/") ? local.current :
+    startswith(local.rel, "member-ci/nonprod") ? local.acct.nonprod_account_id :  # read-only CI plan role in nonprod
+    startswith(local.rel, "member-ci/prod") ? local.acct.prod_account_id :        # read-only CI plan role in prod
+    startswith(local.rel, "member-iam/nonprod") ? local.acct.nonprod_account_id : # provisioner role + boundary (ADR-044)
+    startswith(local.rel, "member-iam/prod") ? local.acct.prod_account_id :
+    startswith(local.rel, "member-oidc/nonprod") ? local.acct.nonprod_account_id : # GitHub federation entry for the pipeline account (platform#57)
+    startswith(local.rel, "watch/us-east-1/prod/") ? local.acct.prod_account_id :
+    startswith(local.rel, "watch/us-east-1/staging/") ? local.acct.nonprod_account_id :
     local.acct.nonprod_account_id # foundation (ecr/pipeline/connection/ci-trigger, watch/us-east-1/*) -> nonprod
   )
-  target = local.want != "" ? local.want : local.current
-  cross  = local.target != local.current
+  cross = local.target != local.current
 
   # Which role the provider assumes in the target member account. Defaults to the admin
   # OrganizationAccountAccessRole (local dev, bootstrap, CI apply). The plan-on-PR CI job sets

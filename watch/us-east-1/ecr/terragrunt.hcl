@@ -5,6 +5,10 @@ include "root" {
   path = find_in_parent_folders("terragrunt.hcl")
 }
 
+locals {
+  acct = read_terragrunt_config(find_in_parent_folders("accounts.hcl")).locals
+}
+
 terraform {
   source = "${get_repo_root()}//modules/ecr"
 }
@@ -13,7 +17,7 @@ inputs = {
   name = "watch"
   tags = { scope = "shared", env = "platform" }
 
-  # Cross-account promote-by-digest (ADR-020): let watch-prod pull. compact() drops the empty
-  # string when WATCH_PROD_ACCOUNT_ID is unset, so this is a no-op until the split is cut over.
-  pull_account_ids = compact([get_env("WATCH_PROD_ACCOUNT_ID", "")])
+  # Cross-account promote-by-digest (ADR-020): let watch-prod pull. Only when prod is a SEPARATE
+  # account — in the single-account topology prod pulls as the repo's own account and needs no grant.
+  pull_account_ids = local.acct.has_prod ? [local.acct.prod_account_id] : []
 }

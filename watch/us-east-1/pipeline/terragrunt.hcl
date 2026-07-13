@@ -8,6 +8,7 @@ include "root" {
 
 locals {
   region = "us-east-1"
+  acct   = read_terragrunt_config(find_in_parent_folders("accounts.hcl")).locals
 }
 
 dependency "ecr" {
@@ -74,8 +75,9 @@ inputs = {
   ecr_repository_url = dependency.ecr.outputs.repository_url
 
   # Cross-account prod deploy (ADR-020): the DeployProd action assumes this predictable role in
-  # watch-prod (created by prod/deploy). Empty when the split isn't cut over -> same-account legacy.
-  prod_deploy_role_arn = get_env("WATCH_PROD_ACCOUNT_ID", "") != "" ? "arn:aws:iam::${get_env("WATCH_PROD_ACCOUNT_ID", "")}:role/watch-prod-deploy" : ""
+  # watch-prod (created by prod/deploy). Empty when prod is NOT a separate account -> the pipeline
+  # deploys in-account and has nothing to assume.
+  prod_deploy_role_arn = local.acct.has_prod ? "arn:aws:iam::${local.acct.prod_account_id}:role/watch-prod-deploy" : ""
 
   staging = {
     cluster_name            = dependency.staging_app.outputs.cluster_name

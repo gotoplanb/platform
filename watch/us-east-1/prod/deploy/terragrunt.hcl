@@ -10,7 +10,8 @@ include "root" {
 }
 
 locals {
-  env = read_terragrunt_config(find_in_parent_folders("env.hcl")).locals
+  env  = read_terragrunt_config(find_in_parent_folders("env.hcl")).locals
+  acct = read_terragrunt_config(find_in_parent_folders("accounts.hcl")).locals
 }
 
 dependency "app" {
@@ -42,8 +43,11 @@ terraform {
 }
 
 inputs = {
-  name               = "${local.env.project}-${local.env.env}" # watch-prod
-  trusted_account_id = get_env("WATCH_NONPROD_ACCOUNT_ID", "")  # the nonprod pipeline account
+  name = "${local.env.project}-${local.env.env}" # watch-prod
+  # The account whose pipeline assumes this role. Resolves to the current account in the
+  # single-account topology, where the pipeline is a same-account caller (platform#58) — reading the
+  # raw env var here rendered "arn:aws:iam:::root" and IAM rejected the trust policy.
+  trusted_account_id = local.acct.nonprod_account_id
 
   artifact_bucket_arn  = dependency.pipeline.outputs.artifact_bucket_arn
   artifact_kms_key_arn = dependency.pipeline.outputs.artifact_kms_key_arn

@@ -190,10 +190,21 @@ Not by reading them. A policy is only correct if it can actually build the thing
 > **nine findings** to get there; all nine are recorded above, because an adopter re-reviewing these
 > policies must be able to diff them and see why each action is present.
 >
-> The single-account and existing-org variants are tracked in
-> [platform#55](https://github.com/gotoplanb/platform/issues/55). They exercise the same policies
-> (only the roles' *location* differs), so expect few or no additions — but "expect" is not "proved",
-> and this document will say so until they are.
+> **The single-account topology now also stands up as the provisioner with ZERO denials — and it
+> added not one action to these documents.** That is the useful result: the policies are a property
+> of the *workload*, not of the account layout. What single-account did surface was a **design** flaw
+> on our side, not a policy gap — several stacks each created an account-global name (the GitHub OIDC
+> provider; `watch-provisioner` and `watch-boundary` themselves), which collided once they all landed
+> in one account. Fixed and guarded in ADR-045 / [#57](https://github.com/gotoplanb/platform/issues/57)
+> / [#58](https://github.com/gotoplanb/platform/issues/58). **Adopters should care about that fix:**
+> it is also what would have made this repo collide with the GitHub federation your accounts already
+> have. Set `WATCH_GITHUB_OIDC_EXISTS=1` and we adopt yours rather than fight it.
+>
+> The existing-org variant is tracked in
+> [platform#55](https://github.com/gotoplanb/platform/issues/55). It differs from the two-member
+> rehearsal only in *which admin role the hub assumes* (`WATCH_MEMBER_ROLE_NAME`), which the proven
+> run already exercised by assuming `watch-provisioner` — but "nearly proved" is not "proved", and
+> this document will say so until it is.
 
 Re-proving both is on the **major-release checklist**, so the policies cannot drift away from what
 you signed off on without the release failing.

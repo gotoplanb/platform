@@ -3,8 +3,8 @@
 # ALB target groups/listeners (ADR-020). This module now wires only staging, via modules/codedeploy.
 
 module "staging" {
-  source                  = "../codedeploy"
-  name                    = "${var.name}-staging"
+  source = "../codedeploy"
+  name   = "${var.name}-staging"
   # ADR-044: the boundary must be threaded to CHILD modules explicitly — the Terragrunt root input
   # only reaches the root module, so a child role would be created unfenced (and iam:CreateRole
   # rightly denied). Caught by the live rehearsal, now asserted by scripts/policy-check.sh.
