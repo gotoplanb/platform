@@ -128,18 +128,20 @@ data "aws_iam_policy_document" "assume" {
 }
 
 resource "aws_iam_role" "execution" {
-  name               = "${var.name}-tempo-exec"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = var.tags
+  name                 = "${var.name}-tempo-exec"
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 resource "aws_iam_role_policy_attachment" "execution" {
   role       = aws_iam_role.execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 resource "aws_iam_role" "task" {
-  name               = "${var.name}-tempo-task"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = var.tags
+  name                 = "${var.name}-tempo-task"
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_cloudwatch_log_group" "tempo" {

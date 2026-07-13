@@ -16,6 +16,12 @@ variable "tags" {
   default = {}
 }
 
+variable "permissions_boundary" {
+  description = "Permissions boundary applied to every role this module creates (ADR-044). Empty = none, for estates that have not adopted the fence."
+  type        = string
+  default     = ""
+}
+
 data "aws_iam_policy_document" "trust" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -30,6 +36,7 @@ resource "aws_iam_role" "this" {
   name                 = var.name
   description          = "Cross-account read-only role for terragrunt plan (assumed by gha-plan)."
   assume_role_policy   = data.aws_iam_policy_document.trust.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
   max_session_duration = 3600
   tags                 = var.tags
 }

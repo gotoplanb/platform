@@ -140,9 +140,10 @@ data "aws_iam_policy_document" "assume" {
 }
 
 resource "aws_iam_role" "execution" {
-  name               = "${var.name}-grafana-exec"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = var.tags
+  name                 = "${var.name}-grafana-exec"
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 resource "aws_iam_role_policy_attachment" "execution" {
   role       = aws_iam_role.execution.name
@@ -162,9 +163,10 @@ resource "aws_iam_role_policy" "read_secret" {
 }
 
 resource "aws_iam_role" "task" {
-  name               = "${var.name}-grafana-task"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = var.tags
+  name                 = "${var.name}-grafana-task"
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_cloudwatch_log_group" "grafana" {

@@ -59,6 +59,11 @@ jobs:
         working-directory: test
         run: go test -run 'TestTopologyRouting|TestProjectRenameKnob' -v -timeout 15m
 
+      # ADR-044: the IAM policies are what a security team signed off on, and the permissions-boundary
+      # fence is what makes the provisioner safe to hand them. Both re-proved on every PR.
+      - name: IAM policy + boundary fence
+        run: scripts/policy-check.sh
+
   plan:
     runs-on: ubuntu-latest
     steps:

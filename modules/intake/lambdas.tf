@@ -25,9 +25,10 @@ data "archive_file" "authorizer" {
 }
 
 resource "aws_iam_role" "authorizer" {
-  name               = "${var.name}-intake-authorizer"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-intake-authorizer"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "authorizer_basic" {
@@ -94,9 +95,10 @@ data "archive_file" "consumer" {
 }
 
 resource "aws_iam_role" "consumer" {
-  name               = "${var.name}-intake-consumer"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-intake-consumer"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "consumer_vpc" {

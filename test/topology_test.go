@@ -102,6 +102,11 @@ var routingClasses = []struct {
 	{"watch/us-east-1/prod/network", "prod"},
 	{"member-ci/nonprod", "nonprod"},
 	{"member-ci/prod", "prod"},
+	// The provisioner role + permissions boundary (ADR-044) must land INSIDE each member — a
+	// boundary in the wrong account fences nothing, and the estate's roles would fail to create.
+	{"member-iam/nonprod", "nonprod"},
+	{"member-iam/prod", "prod"},
+	{"account/provisioner", "management"},
 }
 
 func expectedAccount(class, hub, nonprod, prod string) string {

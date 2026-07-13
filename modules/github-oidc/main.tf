@@ -66,6 +66,7 @@ resource "aws_iam_role" "plan" {
   name                 = "${var.name_prefix}-plan"
   description          = "GitHub Actions: terragrunt plan (read-only, any ref)."
   assume_role_policy   = data.aws_iam_policy_document.plan_trust.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
   max_session_duration = 3600
 }
 
@@ -78,9 +79,9 @@ resource "aws_iam_role_policy_attachment" "plan_readonly" {
 # NARROW assume on exactly the members' read-only watch-ci-plan roles — never the admin
 # OrganizationAccountAccessRole. Keeps the plan path read-only in every account.
 resource "aws_iam_role_policy" "plan_assume_members" {
-  count  = length(var.member_plan_role_arns) > 0 ? 1 : 0
-  name   = "assume-member-plan-roles"
-  role   = aws_iam_role.plan.id
+  count = length(var.member_plan_role_arns) > 0 ? 1 : 0
+  name  = "assume-member-plan-roles"
+  role  = aws_iam_role.plan.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -95,12 +96,36 @@ resource "aws_iam_role" "apply" {
   name                 = "${var.name_prefix}-apply"
   description          = "GitHub Actions: terragrunt apply (write, ${var.apply_branch} only)."
   assume_role_policy   = data.aws_iam_policy_document.apply_trust.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
   max_session_duration = 3600
 }
 
-# Broad for now — Terragrunt creates many resource types. TODO: scope down to per-stack
-# policies once the stacks settle. The OIDC trust (repo + branch) is the real boundary.
-resource "aws_iam_role_policy_attachment" "apply_admin" {
+# The CI apply path holds NO powers of its own (ADR-044). It used to hold AdministratorAccess —
+# "broad for now, the OIDC trust is the real boundary" — which is exactly the sentence a security
+# team refuses to sign. Now it can do precisely one thing: BECOME the provisioner, whose powers are
+# the four reviewable documents in policies/. Anything CI can do, the security team has already read.
+#
+# It is boundary-fenced like any other estate role, which it can afford to be: assuming a role is
+# not an IAM write, so the boundary's "never grant yourself more IAM" deny costs it nothing.
+resource "aws_iam_role_policy" "apply_assume_provisioner" {
+  count = length(var.provisioner_role_arns) > 0 ? 1 : 0
+  name  = "assume-provisioner"
+  role  = aws_iam_role.apply.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "sts:AssumeRole"
+      Resource = var.provisioner_role_arns
+    }]
+  })
+}
+
+# Escape hatch for an estate that has NOT adopted the provisioner yet (provisioner_role_arns = []):
+# fall back to the old admin attachment rather than shipping a CI role that can do nothing at all.
+# Loud on purpose — the plan is that nobody runs this way for long.
+resource "aws_iam_role_policy_attachment" "apply_admin_legacy" {
+  count      = length(var.provisioner_role_arns) > 0 ? 0 : 1
   role       = aws_iam_role.apply.name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }

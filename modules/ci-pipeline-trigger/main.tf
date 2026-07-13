@@ -30,6 +30,12 @@ variable "tags" {
   default = {}
 }
 
+variable "permissions_boundary" {
+  description = "Permissions boundary applied to every role this module creates (ADR-044). Empty = none, for estates that have not adopted the fence."
+  type        = string
+  default     = ""
+}
+
 data "aws_caller_identity" "current" {}
 
 # Self-provision the GitHub OIDC provider in this account unless an ARN was supplied. One provider
@@ -75,6 +81,7 @@ resource "aws_iam_role" "this" {
   name                 = var.name
   description          = "GitHub Actions (${var.github_org}/${var.repo}): start the ${var.pipeline_name} pipeline."
   assume_role_policy   = data.aws_iam_policy_document.trust.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
   max_session_duration = 3600
   tags                 = var.tags
 }

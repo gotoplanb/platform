@@ -8,9 +8,9 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  grpc_port        = 4317
-  http_port        = 4318
-  admin_port       = 12345
+  grpc_port       = 4317
+  http_port       = 4318
+  admin_port      = 12345
   vendor_auth_env = "VENDOR_OTLP_AUTH"
   # nonsensitive: whether a header is *set* isn't secret (only its value is); without this the
   # sensitivity propagates into container_definitions and forces a spurious task-def re-render.
@@ -24,10 +24,10 @@ locals {
 }
 
 module "config" {
-  source               = "../alloy"
-  role                 = "gateway"
-  grpc_port            = local.grpc_port
-  http_port            = local.http_port
+  source                 = "../alloy"
+  role                   = "gateway"
+  grpc_port              = local.grpc_port
+  http_port              = local.http_port
   forward_endpoint       = var.forward_endpoint
   vendor_endpoint        = var.vendor_endpoint
   vendor_auth_header_env = local.vendor_auth_env
@@ -115,18 +115,20 @@ data "aws_iam_policy_document" "assume" {
 }
 
 resource "aws_iam_role" "execution" {
-  name               = "${var.name}-gateway-exec"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = var.tags
+  name                 = "${var.name}-gateway-exec"
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 resource "aws_iam_role_policy_attachment" "execution" {
   role       = aws_iam_role.execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 resource "aws_iam_role" "task" {
-  name               = "${var.name}-gateway-task"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = var.tags
+  name                 = "${var.name}-gateway-task"
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 # Execution role reads the vendor auth header (SecureString) at launch.

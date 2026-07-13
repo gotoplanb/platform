@@ -23,4 +23,13 @@ inputs = {
     get_env("WATCH_NONPROD_ACCOUNT_ID", "") != "" ? "arn:aws:iam::${get_env("WATCH_NONPROD_ACCOUNT_ID", "")}:role/watch-ci-plan" : "",
     get_env("WATCH_PROD_ACCOUNT_ID", "") != "" ? "arn:aws:iam::${get_env("WATCH_PROD_ACCOUNT_ID", "")}:role/watch-ci-plan" : "",
   ])
+
+  # The apply path (ADR-044): gha-apply may ASSUME the provisioner — here and in each member — and do
+  # nothing else. It used to hold AdministratorAccess. Empty list until account/provisioner and
+  # member-iam/* are applied, which keeps the legacy admin attachment so CI never breaks mid-migration.
+  provisioner_role_arns = compact([
+    "arn:aws:iam::${get_aws_account_id()}:role/${get_env("WATCH_PROJECT", "watch")}-provisioner",
+    get_env("WATCH_NONPROD_ACCOUNT_ID", "") != "" ? "arn:aws:iam::${get_env("WATCH_NONPROD_ACCOUNT_ID", "")}:role/${get_env("WATCH_PROJECT", "watch")}-provisioner" : "",
+    get_env("WATCH_PROD_ACCOUNT_ID", "") != "" ? "arn:aws:iam::${get_env("WATCH_PROD_ACCOUNT_ID", "")}:role/${get_env("WATCH_PROJECT", "watch")}-provisioner" : "",
+  ])
 }

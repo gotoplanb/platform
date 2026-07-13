@@ -28,6 +28,8 @@ locals {
     startswith(local.rel, "account/")                  ? local.current :
     startswith(local.rel, "member-ci/nonprod")         ? local.acct.nonprod_account_id : # read-only CI plan role in nonprod
     startswith(local.rel, "member-ci/prod")            ? local.acct.prod_account_id :    # read-only CI plan role in prod
+    startswith(local.rel, "member-iam/nonprod")        ? local.acct.nonprod_account_id : # provisioner role + boundary (ADR-044)
+    startswith(local.rel, "member-iam/prod")           ? local.acct.prod_account_id :
     startswith(local.rel, "watch/us-east-1/prod/")     ? local.acct.prod_account_id :
     startswith(local.rel, "watch/us-east-1/staging/")  ? local.acct.nonprod_account_id :
     local.acct.nonprod_account_id # foundation (ecr/pipeline/connection/ci-trigger, watch/us-east-1/*) -> nonprod
@@ -43,11 +45,18 @@ locals {
   # on the role (caught by test/topology_test.go, platform#50).
   member_role_name = get_env("WATCH_MEMBER_ROLE_NAME", "") != "" ? get_env("WATCH_MEMBER_ROLE_NAME", "") : "OrganizationAccountAccessRole"
 
+  # Normally we only assume when crossing an account boundary. But the provisioner (ADR-044) is a
+  # role you assume even in your OWN account — that is the whole point: the caller (a human, or the
+  # gha-apply OIDC role) holds nothing but sts:AssumeRole, and every write happens as the fenced
+  # identity. WATCH_ASSUME_IN_ACCOUNT=1 turns that on; default off keeps the old behaviour exactly,
+  # so a bootstrap-admin run and the single-account topology are unchanged until you opt in.
+  assume_in_account = get_env("WATCH_ASSUME_IN_ACCOUNT", "0") == "1"
+
   # Base creds live in the management account and assume OrganizationAccountAccessRole into the
   # target member account. State stays centralized in the management bucket for now (per-member
   # state buckets are a later hardening — see ADR-020); the bucket keys off the current account.
-  account_id      = local.current
-  assume_role_block = local.cross ? "assume_role { role_arn = \"arn:aws:iam::${local.target}:role/${local.member_role_name}\" }" : ""
+  account_id        = local.current
+  assume_role_block = (local.cross || local.assume_in_account) ? "assume_role { role_arn = \"arn:aws:iam::${local.target}:role/${local.member_role_name}\" }" : ""
 }
 
 remote_state {
@@ -100,4 +109,20 @@ generate "versions" {
       }
     }
   EOF
+}
+
+# The permissions boundary every estate role must carry (ADR-044). Terragrunt merges these root
+# inputs into every stack, and OpenTofu ignores a TF_VAR_ for a variable a module doesn't declare —
+# so this reaches all ~24 roles without touching 20 stack files.
+#
+# It is a KNOB, not a mandate: WATCH_BOUNDARY=0 renders it empty, which is how you run this repo in
+# an estate that hasn't adopted the fence (or during the one-time admin apply that CREATES the
+# boundary, before it exists). Default on, because the fence is the whole point: without it, the
+# provisioner's iam:CreateRole is a path to admin, and no security team will sign that.
+inputs = {
+  permissions_boundary = (
+    get_env("WATCH_BOUNDARY", "1") == "0"
+    ? ""
+    : "arn:aws:iam::${local.target}:policy/${local.project}-boundary"
+  )
 }

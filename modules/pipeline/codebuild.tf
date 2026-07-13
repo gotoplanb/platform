@@ -19,9 +19,10 @@ data "aws_iam_policy_document" "build_assume" {
 }
 
 resource "aws_iam_role" "build" {
-  name               = "${var.name}-build"
-  assume_role_policy = data.aws_iam_policy_document.build_assume.json
-  tags               = var.tags
+  name                 = "${var.name}-build"
+  assume_role_policy   = data.aws_iam_policy_document.build_assume.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+  tags                 = var.tags
 }
 
 resource "aws_iam_role_policy" "build" {
