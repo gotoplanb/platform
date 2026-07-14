@@ -29,7 +29,7 @@ resource "aws_iam_role_policy" "pipeline" {
       # The artifact CMK: the pipeline generates+reads data keys to write/read the artifact.
       { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = aws_kms_key.artifacts.arn },
       { Effect = "Allow", Action = ["codestar-connections:UseConnection"], Resource = var.connection_arn },
-      { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = [aws_codebuild_project.this.arn, aws_codebuild_project.dast.arn, aws_codebuild_project.smoke.arn] },
+      { Effect = "Allow", Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"], Resource = [aws_codebuild_project.this.arn, aws_codebuild_project.dast.arn, aws_codebuild_project.smoke.arn, aws_codebuild_project.promote.arn] },
       {
         Effect = "Allow"
         Action = [
@@ -39,16 +39,40 @@ resource "aws_iam_role_policy" "pipeline" {
         ]
         Resource = "*"
       },
-      # UpdateService is for the WORKER's rolling deploy (platform#61). The app goes out via
-      # CodeDeploy blue/green, which never needed it — which is part of why the worker's promotion
-      # was missing for so long: nothing in this policy hinted that a service could be deployed
-      # any other way.
-      { Effect = "Allow", Action = ["ecs:RegisterTaskDefinition", "ecs:DescribeServices", "ecs:DescribeTaskDefinition", "ecs:UpdateService"], Resource = "*" },
+      # The WORKER's rolling deploy (platform#61). The app goes out via CodeDeploy blue/green, which
+      # needed none of this — which is part of why the worker's promotion was missing for so long.
+      #
+      # CodePipeline's ECS deploy provider needs more than UpdateService: it reads the service, polls
+      # the tasks to decide whether the rollout settled, and tags what it creates. Granting only
+      # UpdateService got a flat "The provided role does not have sufficient permissions to access
+      # ECS" — a message that names no action, so it is guesswork unless you know the set.
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:RegisterTaskDefinition",
+          "ecs:DescribeServices",
+          "ecs:DescribeTaskDefinition",
+          "ecs:DescribeTasks",
+          "ecs:ListTasks",
+          "ecs:UpdateService",
+          "ecs:TagResource",
+        ]
+        Resource = "*"
+      },
       {
         # Staging only — prod's ECS roles are PassRole'd by the cross-account deploy role in watch-prod.
-        Effect    = "Allow"
-        Action    = ["iam:PassRole"]
-        Resource  = [var.staging.execution_role_arn, var.staging.task_role_arn]
+        #
+        # The WORKER has its OWN task role (ADR-025 splits them: the app only SENDs to SQS, the worker
+        # CONSUMES), so promoting it means passing a role the app deploy never had to. Omitting it
+        # fails with "The provided role does not have sufficient permissions to access ECS" — which
+        # names neither IAM nor the role, and sent me looking at ecs:* actions for two pipeline runs.
+        Effect = "Allow"
+        Action = ["iam:PassRole"]
+        Resource = compact([
+          var.staging.execution_role_arn,
+          var.staging.task_role_arn,
+          var.staging.worker_task_role_arn,
+        ])
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
       ], var.prod_deploy_role_arn != "" ? [
@@ -142,6 +166,25 @@ resource "aws_codepipeline" "this" {
           ServiceName = var.staging.worker_service_name
           FileName    = "imagedefinitions-staging-worker.json"
         }
+      }
+    }
+
+    # And only NOW promote the Lambdas (platform#62) — run_order 3, behind the app, therefore behind
+    # the migration hook. Build used to do this, which meant new Lambda code met an unmigrated schema
+    # and deadlocked the deploy gate that would have migrated it.
+    action {
+      name            = "PromoteStagingLambdas"
+      category        = "Build"
+      owner           = "AWS"
+      provider        = "CodeBuild"
+      version         = "1"
+      input_artifacts = ["build"]
+      run_order       = 3
+      configuration = {
+        ProjectName = aws_codebuild_project.promote.name
+        EnvironmentVariables = jsonencode([
+          { name = "LAMBDA_PREFIX", value = "${var.name}-staging", type = "PLAINTEXT" },
+        ])
       }
     }
   }

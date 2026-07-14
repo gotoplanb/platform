@@ -57,7 +57,32 @@ for _ in $(seq 1 100); do
   B=$(st Build); D=$(st DeployStaging); Z=$(st DAST); A=$(st ApproveProd)
   echo "  Build=$B Deploy=$D DAST=$Z Approve=$A"
   for s in "$B" "$D" "$Z"; do
-    [ "$s" = "Failed" ] && { echo "FAILED before the gate — inspect the pipeline."; exit 1; }
+    if [ "$s" = "Failed" ]; then
+      # Say WHY. "inspect the pipeline" sent me hunting through the console for an hour on a fresh
+      # estate; the cause was already in the API (platform#62). CodePipeline's messages are terse
+      # and sometimes actively misleading — "insufficient permissions to access ECS" turned out to
+      # be a missing iam:PassRole on the worker's own task role — so print them verbatim, plus the
+      # one that only CodeDeploy knows: which ALARM stopped the deployment.
+      echo "FAILED before the gate. Failing actions in this execution:"
+      aws codepipeline list-action-executions --region "$REGION" --pipeline-name watch \
+        --filter pipelineExecutionId="$EID" \
+        --query "actionExecutionDetails[?status=='Failed'].[stageName,actionName,output.executionResult.externalExecutionSummary]" \
+        --output text 2>/dev/null | sed 's/^/  ✗ /'
+
+      for app in watch-staging watch-prod; do
+        dep=$(aws deploy list-deployments --region "$REGION" --application-name "$app" \
+          --deployment-group-name "$app" --query 'deployments[0]' --output text 2>/dev/null)
+        [ -z "$dep" ] || [ "$dep" = "None" ] && continue
+        aws deploy get-deployment --region "$REGION" --deployment-id "$dep" \
+          --query "deploymentInfo.errorInformation.[code,message]" --output text 2>/dev/null |
+          grep -q ALARM_ACTIVE && {
+          echo "  → CodeDeploy stopped $app on an ACTIVE ALARM. On a FRESH estate this is usually"
+          echo "    the escalation-failed alarm: Step Functions executions failing because the code"
+          echo "    is ahead of the schema. Check: aws cloudwatch describe-alarms --alarm-names ${app}-escalation-failed"
+        }
+      done
+      exit 1
+    fi
   done
   [ "$A" = "InProgress" ] && { echo "Reached the prod approval gate — approve to promote to prod (staging is live on latest + DAST passed)."; exit 0; }
   [ "$A" = "Succeeded" ] && { echo "Prod already promoted."; exit 0; }

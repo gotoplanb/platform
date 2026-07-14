@@ -28,6 +28,7 @@ dependency "staging_app" {
   mock_outputs = {
     cluster_name            = "watch-staging", service_name = "watch-staging"
     worker_service_name     = "watch-staging-worker"
+    worker_task_role_arn    = "arn:aws:iam::000000000000:role/watch-staging-worker-task"
     production_listener_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-staging/x/y"
     test_listener_arn       = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-staging/x/z"
     blue_target_group_name  = "watch-staging-blue", green_target_group_name = "watch-staging-green"
@@ -42,6 +43,7 @@ dependency "prod_app" {
   mock_outputs = {
     cluster_name            = "watch-prod", service_name = "watch-prod"
     worker_service_name     = "watch-prod-worker"
+    worker_task_role_arn    = "arn:aws:iam::000000000000:role/watch-prod-worker-task"
     production_listener_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/y"
     https_listener_arn      = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/h"
     test_listener_arn       = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/z"
@@ -86,7 +88,8 @@ inputs = {
     service_name = dependency.staging_app.outputs.service_name
     # The async worker (ADR-025), promoted with the same digest (platform#61). Null when the
     # env has no worker -> "" -> the pipeline simply creates no deploy action for it.
-    worker_service_name     = coalesce(try(dependency.staging_app.outputs.worker_service_name, ""), "")
+    worker_service_name     = try(dependency.staging_app.outputs.worker_service_name, null) == null ? "" : dependency.staging_app.outputs.worker_service_name
+    worker_task_role_arn    = try(dependency.staging_app.outputs.worker_task_role_arn, null) == null ? "" : dependency.staging_app.outputs.worker_task_role_arn
     task_family             = "watch-staging"
     production_listener_arn = dependency.staging_app.outputs.production_listener_arn
     test_listener_arn       = dependency.staging_app.outputs.test_listener_arn
@@ -104,7 +107,8 @@ inputs = {
     service_name = dependency.prod_app.outputs.service_name
     # The async worker (ADR-025), promoted with the same digest (platform#61). Null when the
     # env has no worker -> "" -> the pipeline simply creates no deploy action for it.
-    worker_service_name     = coalesce(try(dependency.prod_app.outputs.worker_service_name, ""), "")
+    worker_service_name     = try(dependency.prod_app.outputs.worker_service_name, null) == null ? "" : dependency.prod_app.outputs.worker_service_name
+    worker_task_role_arn    = try(dependency.prod_app.outputs.worker_task_role_arn, null) == null ? "" : dependency.prod_app.outputs.worker_task_role_arn
     task_family             = "watch-prod"
     production_listener_arn = dependency.prod_app.outputs.https_listener_arn # :443 (#13)
     test_listener_arn       = dependency.prod_app.outputs.test_listener_arn

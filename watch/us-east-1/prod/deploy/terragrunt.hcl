@@ -25,6 +25,7 @@ dependency "app" {
     green_target_group_name = "watch-prod-green"
     execution_role_arn      = "arn:aws:iam::000000000000:role/watch-prod-exec"
     task_role_arn           = "arn:aws:iam::000000000000:role/watch-prod-task"
+    worker_task_role_arn    = "arn:aws:iam::000000000000:role/watch-prod-worker-task"
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
@@ -60,5 +61,6 @@ inputs = {
   green_target_group_name = dependency.app.outputs.green_target_group_name
   execution_role_arn      = dependency.app.outputs.execution_role_arn
   task_role_arn           = dependency.app.outputs.task_role_arn
+  worker_task_role_arn    = try(dependency.app.outputs.worker_task_role_arn, null) == null ? "" : dependency.app.outputs.worker_task_role_arn
   rollback_alarm_names    = ["watch-prod-escalation-failed", "watch-prod-alb-5xx", "watch-prod-target-5xx"]
 }

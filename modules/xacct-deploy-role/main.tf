@@ -62,9 +62,12 @@ data "aws_iam_policy_document" "deploy" {
       "ecs:RegisterTaskDefinition",
       "ecs:DescribeServices",
       # The worker's rolling deploy (platform#61). Everything else here is the blue/green task-set
-      # dance, which is why UpdateService — the plain, boring way to deploy a service with no load
-      # balancer — was never granted, and the worker was never promoted.
+      # dance, which is why the plain, boring way to deploy a service with no load balancer was
+      # never granted, and the worker was never promoted. The ECS deploy provider needs the whole
+      # set — it polls tasks to decide the rollout settled, and tags what it creates.
       "ecs:UpdateService",
+      "ecs:ListTasks",
+      "ecs:TagResource",
       "ecs:UpdateServicePrimaryTaskSet",
       "ecs:CreateTaskSet",
       "ecs:DeleteTaskSet",

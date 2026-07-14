@@ -39,6 +39,11 @@ variable "green_target_group_name" {
 variable "execution_role_arn" {
   type = string
 }
+# The prod worker's OWN task role (ADR-025). Empty when prod has no worker.
+variable "worker_task_role_arn" {
+  type    = string
+  default = ""
+}
 variable "task_role_arn" {
   type = string
 }
@@ -72,7 +77,7 @@ module "deploy_role" {
   trusted_account_id   = var.trusted_account_id
   artifact_bucket_arn  = var.artifact_bucket_arn
   artifact_kms_key_arn = var.artifact_kms_key_arn
-  pass_role_arns       = [var.execution_role_arn, var.task_role_arn]
+  pass_role_arns       = compact([var.execution_role_arn, var.task_role_arn, var.worker_task_role_arn])
   tags                 = var.tags
 }
 

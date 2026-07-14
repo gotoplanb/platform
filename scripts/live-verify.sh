@@ -32,21 +32,54 @@ for env in "${ENVS[@]}"; do
   alb=$(cd "watch/$REGION/$env/app" 2>/dev/null && terragrunt output -raw alb_dns_name 2>/dev/null)
   cluster=$(cd "watch/$REGION/$env/app" 2>/dev/null && terragrunt output -raw cluster_name 2>/dev/null)
 
-  # Service running counts (in the env's member account).
+  # Service health (in the env's member account).
+  #
+  # runningCount ALONE IS A LIE (platform#60/#61). A service whose container exits 0 — e.g. a worker
+  # whose entrypoint is a management command that no longer exists — is restarted forever by ECS,
+  # which reports "has reached a steady state" between restarts. Sampling runningCount caught that
+  # service as 1/1 and 0/1 minutes apart, and we shipped it green while the whole queue seam was
+  # dead. So: require the deployment to have SETTLED (rolloutState=COMPLETED) and, for the worker,
+  # require its running task to have SURVIVED a restart window rather than merely existing.
   counts=$( xacct_assume "$(xacct_account_for "$env")" >/dev/null 2>&1
     export AWS_DEFAULT_REGION="$REGION"
     aws ecs describe-services --cluster "$cluster" --services "$name" "$name-worker" \
-      --query 'services[].[serviceName,runningCount,desiredCount]' --output text 2>/dev/null )
-  app_ok=1; worker_line=""
-  while read -r svc run des; do
+      --query 'services[].[serviceName,runningCount,desiredCount,deployments[0].rolloutState]' --output text 2>/dev/null )
+  app_ok=1; worker_line=""; worker_state=""
+  while read -r svc run des state; do
     [ -z "$svc" ] && continue
     case "$svc" in
-      "$name") { [ "${run:-0}" -ge 1 ] && echo "  ✓ app service $run/$des"; } || { echo "  ✗ app service $run/$des"; app_ok=0; } ;;
-      "$name-worker") worker_line="$run/$des" ;;
+      "$name")
+        if [ "${run:-0}" -ge 1 ] && [ "$state" = "COMPLETED" ]; then echo "  ✓ app service $run/$des ($state)"
+        else echo "  ✗ app service $run/$des (rollout=$state)"; app_ok=0; fi ;;
+      "$name-worker") worker_line="$run/$des"; worker_state="$state" ;;
     esac
   done <<< "$counts"
-  [ -n "$worker_line" ] && { r="${worker_line%%/*}"; { [ "$r" -ge 1 ] && echo "  ✓ worker service $worker_line"; } || { echo "  ✗ worker service $worker_line"; app_ok=0; }; } \
-                        || echo "  · worker service not enabled (skip)"
+
+  if [ -z "$worker_line" ]; then
+    echo "  · worker service not enabled (skip)"
+  else
+    r="${worker_line%%/*}"
+    # Age of the oldest RUNNING worker task. A crash-looping worker never gets old — it is always a
+    # few seconds into its next doomed attempt — so an age floor is what distinguishes "running"
+    # from "restarting", and no count ever can.
+    age=$( xacct_assume "$(xacct_account_for "$env")" >/dev/null 2>&1
+      export AWS_DEFAULT_REGION="$REGION"
+      t=$(aws ecs list-tasks --cluster "$cluster" --family "$name-worker" --desired-status RUNNING \
+            --query 'taskArns[0]' --output text 2>/dev/null)
+      [ -z "$t" ] || [ "$t" = "None" ] && { echo 0; exit 0; }
+      started=$(aws ecs describe-tasks --cluster "$cluster" --tasks "$t" \
+                  --query 'tasks[0].startedAt' --output text 2>/dev/null)
+      [ -z "$started" ] || [ "$started" = "None" ] && { echo 0; exit 0; }
+      python3 -c "import sys,datetime; s=datetime.datetime.fromisoformat('$started'); print(int((datetime.datetime.now(datetime.timezone.utc)-s).total_seconds()))" 2>/dev/null || echo 0 )
+
+    if [ "$r" -ge 1 ] && [ "$worker_state" = "COMPLETED" ] && [ "${age:-0}" -ge 60 ]; then
+      echo "  ✓ worker service $worker_line (alive ${age}s — not restarting)"
+    else
+      echo "  ✗ worker service $worker_line (rollout=$worker_state, task age ${age:-0}s — a crash-looping"
+      echo "    worker reports a healthy count between restarts; it must SURVIVE, not merely exist)"
+      app_ok=0
+    fi
+  fi
 
   # Public API health (no creds needed; -k since we hit the ALB name, not the cert hostname).
   if [ -n "$alb" ]; then

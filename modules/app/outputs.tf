@@ -68,3 +68,11 @@ output "jobs_queue_arn" {
 output "worker_service_name" {
   value = var.enable_worker ? aws_ecs_service.worker[0].name : null
 }
+
+# The worker's OWN task role (ADR-025 splits them: the app only SENDs to SQS, the worker CONSUMES).
+# The pipeline must be allowed to PassRole it to register the worker's task definition — passing only
+# the app's roles fails with "The provided role does not have sufficient permissions to access ECS",
+# which names neither IAM nor the role (platform#61).
+output "worker_task_role_arn" {
+  value = var.enable_worker ? aws_iam_role.worker_task[0].arn : null
+}

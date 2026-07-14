@@ -89,6 +89,8 @@ variable "staging" {
     # platform#61 nothing promoted it, so it sat on the `bootstrap` placeholder forever. Empty when
     # the env has no worker; the deploy action is then simply not created.
     worker_service_name = optional(string, "")
+    # The worker's own task role (ADR-025). Distinct from the app's, so it needs its own PassRole.
+    worker_task_role_arn = optional(string, "")
   })
 }
 
@@ -110,6 +112,8 @@ variable "prod" {
     # platform#61 nothing promoted it, so it sat on the `bootstrap` placeholder forever. Empty when
     # the env has no worker; the deploy action is then simply not created.
     worker_service_name = optional(string, "")
+    # The worker's own task role (ADR-025). Distinct from the app's, so it needs its own PassRole.
+    worker_task_role_arn = optional(string, "")
   })
 }
 
