@@ -19,7 +19,9 @@ cd "$ROOT"
 preflight "topology-check"
 
 fails=0
-role="${WATCH_MEMBER_ROLE_NAME:-OrganizationAccountAccessRole}"
+# Same default as the terragrunt root and xacct.sh: the fenced provisioner (ADR-044). The three must
+# never disagree about who they are — test/topology_test.go asserts it for terragrunt (platform#50).
+role="${WATCH_MEMBER_ROLE_NAME:-${WATCH_PROJECT:-watch}-provisioner}"
 project="${WATCH_PROJECT:-watch}"
 hub="$(aws sts get-caller-identity --query 'Account' --output text)"
 

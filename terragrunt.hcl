@@ -39,20 +39,27 @@ locals {
   )
   cross = local.target != local.current
 
-  # Which role the provider assumes in the target member account. Defaults to the admin
-  # OrganizationAccountAccessRole (local dev, bootstrap, CI apply). The plan-on-PR CI job sets
-  # WATCH_MEMBER_ROLE_NAME=watch-ci-plan so plan assumes the READ-ONLY member role instead (ADR-020).
+  # Which role the provider assumes in the target account. Defaults to the FENCED PROVISIONER — the
+  # end state ADR-044 describes: "thereafter everything — make live, make teardown, CI apply — runs
+  # as watch-provisioner". It used to default to the admin OrganizationAccountAccessRole, which meant
+  # the safe path was the one you had to remember to ask for. Now admin is.
+  #
+  # The plan-on-PR CI job sets WATCH_MEMBER_ROLE_NAME=watch-ci-plan (read-only, ADR-020). The ONE
+  # step that must still be admin is the bootstrap apply that MINTS the provisioner — it cannot
+  # assume what does not exist yet — which runs with WATCH_MEMBER_ROLE_NAME=OrganizationAccountAccessRole
+  # WATCH_ASSUME_IN_ACCOUNT=0 WATCH_BOUNDARY=0 (see docs/SECURITY.md).
+  #
   # Empty-string coalesces to the default (not just unset) so a blank WATCH_MEMBER_ROLE_NAME= in
   # .env behaves like the shell scripts' ${VAR:-default} — terragrunt and xacct must never disagree
   # on the role (caught by test/topology_test.go, platform#50).
-  member_role_name = get_env("WATCH_MEMBER_ROLE_NAME", "") != "" ? get_env("WATCH_MEMBER_ROLE_NAME", "") : "OrganizationAccountAccessRole"
+  member_role_name = get_env("WATCH_MEMBER_ROLE_NAME", "") != "" ? get_env("WATCH_MEMBER_ROLE_NAME", "") : "${local.project}-provisioner"
 
-  # Normally we only assume when crossing an account boundary. But the provisioner (ADR-044) is a
+  # Normally you only assume when crossing an account boundary. But the provisioner (ADR-044) is a
   # role you assume even in your OWN account — that is the whole point: the caller (a human, or the
   # gha-apply OIDC role) holds nothing but sts:AssumeRole, and every write happens as the fenced
-  # identity. WATCH_ASSUME_IN_ACCOUNT=1 turns that on; default off keeps the old behaviour exactly,
-  # so a bootstrap-admin run and the single-account topology are unchanged until you opt in.
-  assume_in_account = get_env("WATCH_ASSUME_IN_ACCOUNT", "0") == "1"
+  # identity. Default ON, so the hub is not the one account where writes quietly happen as admin.
+  # WATCH_ASSUME_IN_ACCOUNT=0 is for the one bootstrap apply that MINTS the provisioner.
+  assume_in_account = get_env("WATCH_ASSUME_IN_ACCOUNT", "1") == "1"
 
   # Base creds live in the management account and assume OrganizationAccountAccessRole into the
   # target member account. State stays centralized in the management bucket for now (per-member

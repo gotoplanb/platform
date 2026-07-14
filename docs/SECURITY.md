@@ -146,9 +146,17 @@ three, only their location differs.
 
 | Topology | Where the provisioner + boundary live | How you assume it |
 |---|---|---|
-| **Single account** | That account (`account/provisioner`) | An AWS profile with `role_arn = arn:aws:iam::<acct>:role/watch-provisioner`, or `WATCH_ASSUME_IN_ACCOUNT=1` |
-| **Two members, new org** | Hub (`account/provisioner`) + each member (`member-iam/{nonprod,prod}`) | `WATCH_MEMBER_ROLE_NAME=watch-provisioner` — the hub identity assumes it in each member |
+| **Single account** | That account (`account/provisioner`) | Nothing to configure — the default. Terragrunt and the lifecycle scripts assume `watch-provisioner` **in the account they are already in** |
+| **Two members, new org** | Hub (`account/provisioner`) + each member (`member-iam/{nonprod,prod}`) | Nothing to configure — the hub identity assumes `watch-provisioner` in each member |
 | **Two members, existing org** | Same as above | Same. If your landing zone already has an assumable role (`AWSControlTowerExecution`, etc.), it is used once, to create these — after that, nothing needs it |
+
+**Assuming the fenced role is the DEFAULT, not an opt-in** (ADR-046). It used to be a knob, which
+meant the safe path was the one you had to remember to ask for — and the hub was exempt entirely, so
+terragrunt and every raw-CLI lifecycle step (`ecs run-task` for migrations, `s3 sync`, CloudFront
+invalidation, `StartPipelineExecution`) quietly ran there as the admin bootstrap key. Our own drift
+report caught it. Now `terragrunt`, `scripts/lib/xacct.sh`, and `scripts/topology-check.sh` all
+default to `<project>-provisioner`, and all three assume it even in-account. Admin is what you now
+have to ask for, and there is exactly one place you are supposed to.
 
 The provisioner stacks are **persistent**: `make teardown` destroys the estate but never the identity
 that destroys it.
@@ -159,13 +167,20 @@ Something has to create the provisioner, and creating IAM roles requires IAM rig
 exactly one admin-shaped step, and it is this:
 
 ```bash
-# ONCE, with an admin identity (your break-glass, or AWS SSO AdministratorAccess):
-WATCH_BOUNDARY=0 terragrunt apply -w account/provisioner     # hub (or the single account)
-WATCH_BOUNDARY=0 terragrunt apply -w member-iam/nonprod      # each member
-WATCH_BOUNDARY=0 terragrunt apply -w member-iam/prod
+# ONCE, with an admin identity (your break-glass, or AWS SSO AdministratorAccess).
+# The three overrides say: don't attach a boundary that doesn't exist yet, and don't try to
+# assume the very role you are here to create.
+export WATCH_BOUNDARY=0 WATCH_ASSUME_IN_ACCOUNT=0 WATCH_MEMBER_ROLE_NAME=OrganizationAccountAccessRole
+
+terragrunt apply -w account/provisioner     # hub (or the single account)
+terragrunt apply -w member-iam/nonprod      # each member
+terragrunt apply -w member-iam/prod
 ```
 
-(`WATCH_BOUNDARY=0` because the boundary cannot be attached to roles until it exists.)
+(`WATCH_BOUNDARY=0` because the boundary cannot be attached to roles until it exists;
+`WATCH_ASSUME_IN_ACCOUNT=0` and the role override because the provisioner cannot mint itself —
+that is the chicken-and-egg this section exists to state plainly. Everything after this step runs
+as the provisioner **by default**, with no flags at all.)
 
 After that, the admin credential is **not needed again** — not for `make live`, not for teardown, not
 for CI — and should be rotated or removed. If you would rather not run our Terraform with admin at

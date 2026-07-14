@@ -166,7 +166,7 @@ func expectedAccount(class, hub, nonprod, prod string) string {
 type topology struct {
 	name    string
 	env     map[string]string
-	role    string // expected assume-role name for cross-account stacks; "" = no assume anywhere
+	role    string // the role EVERY stack must assume — in a member, and in the hub too (ADR-044)
 	nonprod string
 	prod    string
 }
@@ -174,17 +174,20 @@ type topology struct {
 func topologies() []topology {
 	return []topology{
 		{
+			// Even here, with no member accounts at all, writes go through the fenced role: the hub
+			// must not be the one account where terragrunt quietly runs as admin (ADR-044/046).
 			name: "single-account",
 			env: map[string]string{
 				"WATCH_NONPROD_ACCOUNT_ID": "", "WATCH_PROD_ACCOUNT_ID": "", "WATCH_MEMBER_ROLE_NAME": "",
 			},
+			role: "watch-provisioner",
 		},
 		{
 			name: "two-member-new-org(default-role)",
 			env: map[string]string{
 				"WATCH_NONPROD_ACCOUNT_ID": fakeNonprod, "WATCH_PROD_ACCOUNT_ID": fakeProd, "WATCH_MEMBER_ROLE_NAME": "",
 			},
-			role: "OrganizationAccountAccessRole", nonprod: fakeNonprod, prod: fakeProd,
+			role: "watch-provisioner", nonprod: fakeNonprod, prod: fakeProd,
 		},
 		{
 			name: "two-member-existing-org(custom-role)",
@@ -209,13 +212,13 @@ func TestTopologyRouting(t *testing.T) {
 				assert.Contains(t, provider, fmt.Sprintf("allowed_account_ids = [%q]", want),
 					"stack must target the %s account in %s", rc.class, topo.name)
 
-				cross := want != hub
-				if cross {
-					wantArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", want, topo.role)
-					assert.Contains(t, provider, wantArn, "cross-account stack must assume the member role")
-				} else {
-					assert.NotContains(t, provider, "assume_role", "same-account stack must not assume")
-				}
+				// EVERY stack assumes the fenced role — in a member account, and in the hub too.
+				// The hub used to be exempt (assume only when crossing an account), which made it the
+				// one account where terragrunt, and every raw-CLI lifecycle step behind it, wrote as
+				// bootstrap-admin. The ADR-046 drift report caught exactly that, in our own estate.
+				wantArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", want, topo.role)
+				assert.Contains(t, provider, wantArn,
+					"every stack must write as the fenced role, including in the hub (ADR-044)")
 
 				// State ALWAYS stays in the hub bucket, every topology (ADR-020).
 				assert.Equal(t, "watch-tfstate-"+hub, bucket)
