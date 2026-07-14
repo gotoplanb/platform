@@ -190,9 +190,11 @@ Not by reading them. A policy is only correct if it can actually build the thing
 > **nine findings** to get there; all nine are recorded above, because an adopter re-reviewing these
 > policies must be able to diff them and see why each action is present.
 >
-> **The single-account topology now also stands up as the provisioner with ZERO denials — and it
-> added not one action to these documents.** That is the useful result: the policies are a property
-> of the *workload*, not of the account layout. What single-account did surface was a **design** flaw
+> **The single-account topology is now proven too** — `make live` → `make teardown` → `sweep` (no
+> billable orphans), again as `watch-provisioner` with no admin credential in the call path, with
+> **zero denials on both the create and the destroy path, and not one action added to these
+> documents.** That is the useful result: the policies are a property of the *workload*, not of the
+> account layout. What single-account did surface was a **design** flaw
 > on our side, not a policy gap — several stacks each created an account-global name (the GitHub OIDC
 > provider; `watch-provisioner` and `watch-boundary` themselves), which collided once they all landed
 > in one account. Fixed and guarded in ADR-045 / [#57](https://github.com/gotoplanb/platform/issues/57)
