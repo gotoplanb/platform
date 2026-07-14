@@ -6,7 +6,9 @@
 # shared pipeline, on `both`) are destroyed:
 #   kept: state backend (watch-tfstate-*/watch-tflocks), ecr (the built image),
 #         <env>/dns + <env>/dns-status (ACM cert + Cloudflare records — free, slow to revalidate),
-#         account/* (budget, github-oidc), github/* (repo config).
+#         account/* (budget, github-oidc, oidc-provider), github/* (repo config),
+#         member-oidc/* (the GitHub federation entry for the pipeline account — free, and
+#         destroying it would break the app repo's CD trigger for no saving; platform#57).
 #
 # Usage:
 #   scripts/teardown.sh                  # both envs + pipeline (default), sequential
@@ -113,7 +115,7 @@ aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null || { echo "n
 echo "Region  : $REGION"
 echo "Envs    : ${ENVS[*]}$([ "$DO_PIPELINE" = 1 ] && echo ' (+ pipeline first)')"
 echo "Mode    : $([ "$PARALLEL" = 1 ] && [ "${#ENVS[@]}" -gt 1 ] && echo 'parallel (per-env)' || echo sequential)"
-echo "Kept    : state backend, ecr, connection, ci-trigger, account/*, github/*$([ "$WITH_DNS" = 1 ] && echo '' || echo ', <env>/dns+dns-status')"
+echo "Kept    : state backend, ecr, connection, ci-trigger, account/*, member-oidc/*, github/*$([ "$WITH_DNS" = 1 ] && echo '' || echo ', <env>/dns+dns-status')"
 
 if [ "$ASSUME_YES" != 1 ]; then
   read -r -p "Proceed? [y/N] " ans

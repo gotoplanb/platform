@@ -6,17 +6,18 @@
 # pipeline.
 #
 # The trust provider and this role MUST live in the SAME account as the pipeline (OIDC federation is
-# same-account). After the multi-account split (ADR-020) the pipeline is in nonprod, which had no
-# GitHub OIDC provider — so this module SELF-PROVISIONS one when `oidc_provider_arn` is empty (the
-# default). Pass a non-empty ARN to reuse an existing provider (single-account / shared-provider mode).
+# same-account). This module CONSUMES that provider and never creates one: an OIDC provider is an
+# account-global singleton, so it is owned by modules/oidc-provider via an explicit per-account stack
+# (platform#57). Self-provisioning it here collided with the hub's provider in the single-account
+# topology, and would have collided with an adopter's existing GitHub federation.
 
 variable "name" {
   type    = string
   default = "watch-ci-trigger"
 }
 variable "oidc_provider_arn" {
-  type    = string
-  default = "" # empty => create the GitHub OIDC provider in this (the pipeline's) account
+  description = "ARN of the GitHub OIDC provider in THIS (the pipeline's) account. Owned by the account's oidc-provider stack; required."
+  type        = string
 }
 variable "github_org" { type = string }
 variable "repo" { type = string }
@@ -38,23 +39,9 @@ variable "permissions_boundary" {
 
 data "aws_caller_identity" "current" {}
 
-# Self-provision the GitHub OIDC provider in this account unless an ARN was supplied. One provider
-# per URL per account, so this is the account's single GitHub federation entry.
-resource "aws_iam_openid_connect_provider" "github" {
-  count          = var.oidc_provider_arn == "" ? 1 : 0
-  url            = "https://token.actions.githubusercontent.com"
-  client_id_list = ["sts.amazonaws.com"]
-  # AWS no longer validates this for the well-known GitHub provider, but the field is kept.
-  thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
-  ]
-  tags = var.tags
-}
-
 locals {
   pipeline_arn = "arn:aws:codepipeline:${var.region}:${data.aws_caller_identity.current.account_id}:${var.pipeline_name}"
-  provider_arn = var.oidc_provider_arn != "" ? var.oidc_provider_arn : one(aws_iam_openid_connect_provider.github[*].arn)
+  provider_arn = var.oidc_provider_arn
 }
 
 data "aws_iam_policy_document" "trust" {

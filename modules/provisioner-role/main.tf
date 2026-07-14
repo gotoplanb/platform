@@ -46,6 +46,17 @@ variable "tags" {
   default = {}
 }
 
+# The role and the boundary are named per-PROJECT, not per-account — watch-provisioner in every
+# account, which is the point (one WATCH_MEMBER_ROLE_NAME works everywhere). That makes them
+# account-global names, so exactly ONE stack may own them in any given account. In the two-member
+# topologies the three owner stacks land in three accounts; in single-account they would all land in
+# one and fight (platform#58). An owner that isn't the owner sets create=false and creates nothing.
+variable "create" {
+  description = "Create the provisioner role, its policies and the boundary in this account. False when another stack already owns them here (single-account: the hub's account/provisioner does)."
+  type        = bool
+  default     = true
+}
+
 data "aws_caller_identity" "current" {}
 
 locals {
@@ -68,6 +79,7 @@ locals {
 
 # The ceiling on every role the estate creates. Nothing the provisioner mints can exceed it.
 resource "aws_iam_policy" "boundary" {
+  count       = var.create ? 1 : 0
   name        = "${var.project}-boundary"
   description = "Permissions boundary: the ceiling on every IAM role the ${var.project} estate creates. Roles may use the account, but may never grant themselves IAM, touch the org/account/billing, or destroy the audit trail."
   policy      = file("${path.module}/../../policies/watch-boundary.json")
@@ -75,7 +87,7 @@ resource "aws_iam_policy" "boundary" {
 }
 
 resource "aws_iam_policy" "provisioner" {
-  for_each = local.policy_files
+  for_each = var.create ? local.policy_files : {}
 
   name        = "${var.project}-provisioner-${each.key}"
   description = "What the ${var.project} provisioner may do: ${each.key}."
@@ -94,6 +106,7 @@ data "aws_iam_policy_document" "trust" {
 }
 
 resource "aws_iam_role" "provisioner" {
+  count                = var.create ? 1 : 0
   name                 = "${var.project}-provisioner"
   description          = "OpenTofu runs as this. Replaces bootstrap-admin (ADR-044)."
   assume_role_policy   = data.aws_iam_policy_document.trust.json
@@ -108,18 +121,20 @@ resource "aws_iam_role" "provisioner" {
 resource "aws_iam_role_policy_attachment" "provisioner" {
   for_each = aws_iam_policy.provisioner
 
-  role       = aws_iam_role.provisioner.name
+  role       = one(aws_iam_role.provisioner[*].name)
   policy_arn = each.value.arn
 }
 
+# Derived from the names, not from the resources: when create=false these still name the right
+# things — the identical role/boundary in this account, owned by whichever stack owns them here.
 output "role_arn" {
-  value = aws_iam_role.provisioner.arn
+  value = "arn:aws:iam::${local.account_id}:role/${var.project}-provisioner"
 }
 
 output "boundary_arn" {
-  value = aws_iam_policy.boundary.arn
+  value = "arn:aws:iam::${local.account_id}:policy/${var.project}-boundary"
 }
 
 output "policy_arns" {
-  value = [for p in aws_iam_policy.provisioner : p.arn]
+  value = [for k in keys(local.policy_files) : "arn:aws:iam::${local.account_id}:policy/${var.project}-provisioner-${k}"]
 }

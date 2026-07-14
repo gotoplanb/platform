@@ -24,6 +24,11 @@ terraform {
 inputs = {
   project = get_env("WATCH_PROJECT", "watch")
 
+  # The hub always owns its own provisioner + boundary. Stated explicitly because the member-iam
+  # stacks make the same claim conditionally, and in single-account all three target this account —
+  # exactly one of them may create the names (platform#58).
+  create = true
+
   # Who may assume the provisioner in the hub. The account root delegates the decision to that
   # account's own IAM (an admin can then grant sts:AssumeRole to a human, an SSO permission set, or
   # the gha-apply OIDC role) — which is what a security team will want, rather than us hardcoding a

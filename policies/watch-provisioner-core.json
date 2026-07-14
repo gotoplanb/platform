@@ -10,6 +10,7 @@
         "ecs:List*",
         "elasticloadbalancing:Describe*",
         "application-autoscaling:Describe*",
+        "application-autoscaling:ListTagsForResource",
         "servicediscovery:Get*",
         "servicediscovery:List*",
         "logs:Describe*",
@@ -117,6 +118,26 @@
       }
     },
     {
+      "Sid": "PrivateDnsForServiceDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "route53:CreateHostedZone",
+        "route53:DeleteHostedZone",
+        "route53:GetHostedZone",
+        "route53:ListHostedZones",
+        "route53:ListHostedZonesByName",
+        "route53:ListHostedZonesByVPC",
+        "route53:AssociateVPCWithHostedZone",
+        "route53:DisassociateVPCFromHostedZone",
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:GetChange",
+        "route53:ChangeTagsForResource",
+        "route53:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "ObservabilityLogsAndAlarms",
       "Effect": "Allow",
       "Action": [
@@ -130,6 +151,14 @@
         "logs:DeleteDataProtectionPolicy",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
+        "logs:CreateLogDelivery",
+        "logs:GetLogDelivery",
+        "logs:UpdateLogDelivery",
+        "logs:DeleteLogDelivery",
+        "logs:ListLogDeliveries",
+        "logs:PutResourcePolicy",
+        "logs:DeleteResourcePolicy",
+        "logs:DescribeResourcePolicies",
         "cloudwatch:PutMetricAlarm",
         "cloudwatch:DeleteAlarms",
         "cloudwatch:TagResource",

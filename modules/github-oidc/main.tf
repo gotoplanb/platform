@@ -5,19 +5,20 @@
 # The trust condition (repo + ref) is the security boundary. Once this is wired into CI,
 # the temporary `watch-bootstrap` access key is disabled (ADR-004 / aws-operating-principles).
 
+#
+# The OIDC provider itself is NOT created here (platform#57). It is an account-global singleton, so
+# it is owned by one explicit stack per federating account (modules/oidc-provider) and consumed by
+# ARN — this module and modules/ci-pipeline-trigger were both creating one, which only worked
+# because they happened to land in different accounts.
+
+variable "oidc_provider_arn" {
+  description = "ARN of this account's GitHub federation entry, from the account's oidc-provider stack."
+  type        = string
+}
+
 locals {
   sub_any   = "repo:${var.github_org}/${var.repo}:*"
   sub_apply = "repo:${var.github_org}/${var.repo}:ref:refs/heads/${var.apply_branch}"
-}
-
-resource "aws_iam_openid_connect_provider" "github" {
-  url            = "https://token.actions.githubusercontent.com"
-  client_id_list = ["sts.amazonaws.com"]
-  # AWS no longer validates this for the well-known GitHub provider, but the field is kept.
-  thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
-  ]
 }
 
 data "aws_iam_policy_document" "plan_trust" {
@@ -26,7 +27,7 @@ data "aws_iam_policy_document" "plan_trust" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [var.oidc_provider_arn]
     }
     condition {
       test     = "StringEquals"
@@ -47,7 +48,7 @@ data "aws_iam_policy_document" "apply_trust" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [var.oidc_provider_arn]
     }
     condition {
       test     = "StringEquals"

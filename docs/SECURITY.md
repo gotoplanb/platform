@@ -99,6 +99,46 @@ An honest list, because you will look for it:
 - **`kms:Encrypt`/`Decrypt`/`GenerateDataKey`** are granted because Terraform reads and writes
   SSM SecureStrings and the RDS master secret during apply.
 
+### Actions that are here only because the live rehearsal demanded them
+
+Every one of these was **absent** from a policy written by reading all the Terraform, and **added**
+because the estate refused to build without it. They are the argument for §6.
+
+| Action | Why it is needed |
+|---|---|
+| `route53:*` (private zones) | Cloud Map's `aws_service_discovery_private_dns_namespace` creates a **Route53 private hosted zone** under the hood. There is not a single `aws_route53_*` resource in this repo — the requirement is invisible in the source. |
+| `states:ValidateStateMachineDefinition` | The AWS provider **validates the ASL before creating** the state machine. A read-shaped call that no resource inventory implies. |
+| `apigateway:TagResource` / `UntagResource` | API Gateway **v2** tags through these. Note: **AWS Access Analyzer reports that these actions do not exist** — its action database is out of date. We removed them on Analyzer's advice, and `CreateStage` then failed with `AccessDenied` in the live run. The policy gate now ignores that specific finding, with this explanation attached. A validator is evidence; the estate is the oracle. |
+| `logs:CreateLogDelivery` (+ `Get`/`Update`/`Delete`/`List`, `PutResourcePolicy`) | API Gateway **access logging** is configured through the CloudWatch Logs *delivery* API — a different action family from `logs:CreateLogGroup`, and required merely to create the stage. |
+| `application-autoscaling:ListTagsForResource` | That service reads tags through `List*`, not `Describe*`. Terraform reads them on every refresh, so this fails on the *second* apply, not the first. |
+| `iam:PassRole` on `arn:aws:iam::*:role/watch-*-deploy` | The pipeline lives in the nonprod account but passes **prod's** `watch-prod-deploy` role to CodePipeline. Cross-account `PassRole` is evaluated in the *calling* account, so a same-account resource scope is not enough. Still conditioned on `iam:PassedToService`. |
+| `s3:DeleteObjectVersion` | The buckets are **versioned**, so emptying one on destroy means deleting object versions and delete markers — not just objects. **This is the one that only `teardown` reveals**, and the one whose absence would leave an adopter unable to destroy what they created. |
+| `sts:AssumeRole` **in the boundary** | See below. |
+
+### The finding that justifies the whole exercise
+
+The permissions boundary's `ButNeverGrantThemselvesMoreIam` statement denies everything except a
+read-list **on IAM resources** (`arn:aws:iam::*:*`). An `sts:AssumeRole` call *targets an IAM role
+ARN* — so it matched that resource, was not in the allow-list, and **was denied**. Every bounded role
+was silently blocked from assuming any role: the pipeline could not reach the cross-account deploy
+role, and **`gha-apply` — whose entire policy is `sts:AssumeRole` on the provisioner — could do
+nothing at all.** CI would have been dead on arrival for every adopter.
+
+The static gate was perfectly happy with that policy: valid IAM, correct conditions, no wildcards,
+all 25 roles fenced. Green, and broken. `sts:AssumeRole` is now permitted through the boundary,
+which is safe precisely because a bounded role **cannot change its own identity policy** — it can
+only assume what it was already explicitly granted, and it can never grant itself more.
+
+This is why §6 insists on the live rehearsal, and why re-running it is on the major-release checklist.
+
+### A hole the fence caught in its own plumbing
+
+`modules/pipeline` calls `modules/codedeploy` as a **child module**. The Terragrunt root input that
+carries the boundary only reaches the *root* module — so the child's IAM role was being created
+**unfenced**, and `iam:CreateRole` was correctly denied. The fence caught a gap in its own wiring.
+`scripts/policy-check.sh` now asserts that every module call into a role-creating child forwards the
+boundary, so it cannot recur.
+
 ## 4. Where the roles go, per topology
 
 The three supported shapes (see [`TOPOLOGIES.md`](TOPOLOGIES.md)); the policies are identical in all
@@ -143,10 +183,30 @@ Not by reading them. A policy is only correct if it can actually build the thing
   `watch-provisioner` with no admin credential available**, once per topology. Teardown is the part
   that matters: a missing `Delete*` action does not surface until you try to leave.
 
-> **Status:** the static gate is in force now. The live rehearsal is tracked in
-> [platform#55](https://github.com/gotoplanb/platform/issues/55) — until it is ticked, treat the
-> policies as *reviewed but not yet proven*, and expect the rehearsal to add a small number of
-> actions (each one recorded here with the reason it was needed).
+> **Status (2026-07-13).** The static gate is in force. The live rehearsal is **done for the
+> two-member topology** — the one an enterprise actually uses: a full `make live` → `live-verify`
+> (app, worker, API and status page green in both accounts) → `make teardown` → `sweep` (no billable
+> orphans), performed as `watch-provisioner` with no admin credential in the call path. It took
+> **nine findings** to get there; all nine are recorded above, because an adopter re-reviewing these
+> policies must be able to diff them and see why each action is present.
+>
+> **The single-account topology is now proven too** — `make live` → `make teardown` → `sweep` (no
+> billable orphans), again as `watch-provisioner` with no admin credential in the call path, with
+> **zero denials on both the create and the destroy path, and not one action added to these
+> documents.** That is the useful result: the policies are a property of the *workload*, not of the
+> account layout. What single-account did surface was a **design** flaw
+> on our side, not a policy gap — several stacks each created an account-global name (the GitHub OIDC
+> provider; `watch-provisioner` and `watch-boundary` themselves), which collided once they all landed
+> in one account. Fixed and guarded in ADR-045 / [#57](https://github.com/gotoplanb/platform/issues/57)
+> / [#58](https://github.com/gotoplanb/platform/issues/58). **Adopters should care about that fix:**
+> it is also what would have made this repo collide with the GitHub federation your accounts already
+> have. Set `WATCH_GITHUB_OIDC_EXISTS=1` and we adopt yours rather than fight it.
+>
+> The existing-org variant is tracked in
+> [platform#55](https://github.com/gotoplanb/platform/issues/55). It differs from the two-member
+> rehearsal only in *which admin role the hub assumes* (`WATCH_MEMBER_ROLE_NAME`), which the proven
+> run already exercised by assuming `watch-provisioner` — but "nearly proved" is not "proved", and
+> this document will say so until it is.
 
 Re-proving both is on the **major-release checklist**, so the policies cannot drift away from what
 you signed off on without the release failing.

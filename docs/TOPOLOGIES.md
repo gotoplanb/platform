@@ -71,12 +71,24 @@ role the hub may assume**.
 - `./bootstrap` in whichever account runs applies (your "hub" — it need not be the org's
   management account), then the normal lifecycle.
 
+- **If your accounts already run GitHub Actions** — i.e. they already have a
+  `token.actions.githubusercontent.com` OIDC provider — set `WATCH_GITHUB_OIDC_EXISTS=1`.
+  An OIDC provider is account-global (one per URL per account), so we then **adopt** yours
+  instead of creating one. Without this we would fail with `409 EntityAlreadyExists` on your
+  existing federation, and we will never destroy or contest infrastructure we did not create
+  (ADR-045). Your provider's trust conditions are unaffected; we only add roles that reference it.
+
 **Mode-dependent stacks:**
 - `account/budget-*` assumes the hub account sees the (consolidated) billing — in an
   existing org, billing usually consolidates at *their* management account, not your hub.
   Skip or adapt.
 - `member-ci/*` is optional hardening (read-only plan roles for CI); apply if you use the
   plan-on-PR workflow.
+- `account/oidc-provider` + `member-oidc/nonprod` own the GitHub federation entry in the two
+  accounts that actually federate: the hub (for the platform repo's plan/apply roles) and the
+  pipeline's account (for the app repo's `StartPipelineExecution` trigger role). **Prod
+  federates GitHub nowhere** — nothing in GitHub reaches prod directly; the nonprod pipeline
+  does, by assuming `watch-prod-deploy`.
 
 ---
 
@@ -115,6 +127,22 @@ CodeStar connection then needs its one-time authorization again), or accept that
 plumbing stays in the original account. Also disable AppConfig deletion protection per
 account (`aws appconfig update-account-settings --deletion-protection Enabled=false`) or
 fast teardowns will trip it — see GOTCHAS.
+
+The same applies, with teeth, to the stacks that own **account-global names** (ADR-045):
+`account/provisioner`, `member-iam/{nonprod,prod}`, `account/oidc-provider`,
+`member-oidc/nonprod`. State keys are per-*path*, not per-topology, so after a switch these
+stacks still hold the **old account's** role and policy ARNs while the provider now points at
+the new target — and because IAM deletes by *name*, an apply could destroy the identically
+named role in the account you just switched to (including the provisioner you are applying
+as). Release the stale entries; never destroy them:
+
+```bash
+cd member-iam/nonprod && terragrunt state rm aws_iam_role.provisioner aws_iam_policy.boundary ...
+```
+
+`state rm` forgets the resource without touching AWS — the old account's role stays where it
+is, and re-importing it is how you switch back. In the topology where the stack is not the
+owner it then creates nothing (`create = has_nonprod`), which is the correct no-op.
 
 ## Guardrails
 

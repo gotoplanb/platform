@@ -83,6 +83,22 @@ for mod in $(grep -rl 'resource "aws_iam_role"' modules/ | xargs -n1 dirname | s
   fi
 done
 
+# A module can declare the variable and still drop the fence on the way DOWN: the Terragrunt root
+# input only reaches the ROOT module, so a `module "x" { source = "../codedeploy" }` block that
+# doesn't forward permissions_boundary creates its roles unfenced. The live rehearsal found exactly
+# this (pipeline → codedeploy), and iam:CreateRole was correctly denied. Assert the wiring.
+for call in $(grep -rn 'source *= *"\.\./' modules/*/*.tf | grep -v '^modules/provisioner-role' | tr -d ' '); do
+  file=${call%%:*}
+  child=$(printf '%s' "$call" | sed -E 's/.*source="\.\.\/([a-z-]+)".*/\1/')
+  # only child modules that actually create roles need the fence
+  grep -q 'resource "aws_iam_role"' "modules/$child"/*.tf 2>/dev/null || continue
+  if grep -A15 "source.*\.\./$child\"" "$file" | grep -q 'permissions_boundary'; then
+    note "✓ $file → $child: boundary forwarded"
+  else
+    bad "$file calls modules/$child (which creates IAM roles) WITHOUT forwarding permissions_boundary"
+  fi
+done
+
 echo "[policy] AWS Access Analyzer"
 if aws sts get-caller-identity >/dev/null 2>&1; then
   for f in policies/*.json; do
@@ -90,10 +106,20 @@ if aws sts get-caller-identity >/dev/null 2>&1; then
     # IDENTITY_POLICY: these are managed policies attached to a role (the boundary is one too).
     # SUGGESTIONs are style noise; WARNING/ERROR/SECURITY_WARNING are the ones a reviewer would raise
     # — PassRole on a wildcard resource, an unconditioned CreateServiceLinkedRole, and friends.
-    findings=$(render "$f" | aws accessanalyzer validate-policy \
+    # `apigateway:TagResource`/`UntagResource` are excluded from the INVALID_ACTION check because
+    # Access Analyzer is WRONG about them: its action database predates API Gateway v2's tagging API,
+    # so it reports "the action does not exist". It does — and CreateStage fails with AccessDenied
+    # without it, which we learned by deleting it on Analyzer's advice and watching the live estate
+    # fail (platform#55). A validator is evidence, not an oracle; the estate is the oracle.
+    if ! raw=$(render "$f" | aws accessanalyzer validate-policy \
       --policy-type IDENTITY_POLICY --policy-document file:///dev/stdin \
-      --query 'findings[?findingType!=`SUGGESTION`].[findingType,issueCode]' --output text 2>/dev/null || echo "SKIPPED")
-    if [ "$findings" = "SKIPPED" ]; then
+      --query 'findings[?findingType!=`SUGGESTION`].[findingType,issueCode,findingDetails]' \
+      --output text 2>/dev/null); then
+      raw="SKIPPED"
+    fi
+    # Drop the two findings where Access Analyzer is demonstrably wrong (see comment above).
+    findings=$(printf '%s' "$raw" | grep -v 'apigateway:TagResource\|apigateway:UntagResource' || true)
+    if [ "$raw" = "SKIPPED" ]; then
       note "… $name: validate-policy unavailable (needs access-analyzer:ValidatePolicy)"
     elif [ "$name" = "watch-boundary.json" ]; then
       # Access Analyzer reads the boundary as if it were a grant and objects to its `Allow *:*`

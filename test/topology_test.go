@@ -13,8 +13,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,9 +31,8 @@ const (
 	fakeProd    = "222222222222"
 )
 
-// render runs `terragrunt render --format json` for a stack with a controlled topology env
-// and returns (providerContents, stateBucket).
-func render(t *testing.T, stack string, env map[string]string) (string, string) {
+// renderDoc runs `terragrunt render --format json` for a stack with a controlled topology env.
+func renderDoc(t *testing.T, stack string, env map[string]string) map[string]any {
 	t.Helper()
 	cmd := exec.Command("terragrunt", "render", "--format", "json")
 	cmd.Dir = "../" + stack
@@ -50,6 +51,21 @@ func render(t *testing.T, stack string, env map[string]string) (string, string) 
 
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(out, &doc), "render %s: bad json", stack)
+	return doc
+}
+
+// renderInputs returns a stack's resolved inputs — what the module would actually be called with.
+func renderInputs(t *testing.T, stack string, env map[string]string) map[string]any {
+	t.Helper()
+	inputs, _ := dig(renderDoc(t, stack, env), "inputs").(map[string]any)
+	require.NotNil(t, inputs, "render %s: no inputs", stack)
+	return inputs
+}
+
+// render returns (providerContents, stateBucket) for a stack.
+func render(t *testing.T, stack string, env map[string]string) (string, string) {
+	t.Helper()
+	doc := renderDoc(t, stack, env)
 
 	provider, _ := dig(doc, "generate", "provider", "contents").(string)
 	require.NotEmpty(t, provider, "render %s: no generated provider", stack)
@@ -107,6 +123,30 @@ var routingClasses = []struct {
 	{"member-iam/nonprod", "nonprod"},
 	{"member-iam/prod", "prod"},
 	{"account/provisioner", "management"},
+	// The GitHub federation entry, one owner per federating account (platform#57).
+	{"account/oidc-provider", "management"},
+	{"member-oidc/nonprod", "nonprod"},
+}
+
+// Stacks that own an ACCOUNT-GLOBAL name — something AWS permits exactly one of per account, and
+// which we therefore may create from exactly one stack per account:
+//
+//	the GitHub OIDC provider  (one per URL per account)
+//	watch-provisioner + watch-boundary  (named per project, identical in every account, by design)
+//
+// Every one of these stacks gates creation on a `create` input, because in the single-account
+// topology they all route to the SAME account and would otherwise fight over the same names. That
+// is the bug this table exists to prevent from coming back (platform#57, platform#58).
+var globalNameOwners = []struct {
+	stack string
+	class string
+	owns  string // the account-global name(s) this stack creates
+}{
+	{"account/oidc-provider", "management", "github-oidc-provider"},
+	{"member-oidc/nonprod", "nonprod", "github-oidc-provider"},
+	{"account/provisioner", "management", "provisioner-role+boundary"},
+	{"member-iam/nonprod", "nonprod", "provisioner-role+boundary"},
+	{"member-iam/prod", "prod", "provisioner-role+boundary"},
 }
 
 func expectedAccount(class, hub, nonprod, prod string) string {
@@ -123,16 +163,16 @@ func expectedAccount(class, hub, nonprod, prod string) string {
 	return hub // management class, or single-account fallback
 }
 
-func TestTopologyRouting(t *testing.T) {
-	hub := hubAccount(t)
+type topology struct {
+	name    string
+	env     map[string]string
+	role    string // expected assume-role name for cross-account stacks; "" = no assume anywhere
+	nonprod string
+	prod    string
+}
 
-	topologies := []struct {
-		name    string
-		env     map[string]string
-		role    string // expected assume-role name for cross-account stacks; "" = no assume anywhere
-		nonprod string
-		prod    string
-	}{
+func topologies() []topology {
+	return []topology{
 		{
 			name: "single-account",
 			env: map[string]string{
@@ -155,8 +195,12 @@ func TestTopologyRouting(t *testing.T) {
 			role: "AWSControlTowerExecution", nonprod: fakeNonprod, prod: fakeProd,
 		},
 	}
+}
 
-	for _, topo := range topologies {
+func TestTopologyRouting(t *testing.T) {
+	hub := hubAccount(t)
+
+	for _, topo := range topologies() {
 		for _, rc := range routingClasses {
 			t.Run(topo.name+"/"+rc.stack, func(t *testing.T) {
 				provider, bucket := render(t, rc.stack, topo.env)
@@ -177,6 +221,88 @@ func TestTopologyRouting(t *testing.T) {
 				assert.Equal(t, "watch-tfstate-"+hub, bucket)
 			})
 		}
+	}
+}
+
+// An IAM OIDC provider is account-global: exactly one per URL per account. It must therefore have
+// exactly one OWNER, and the owner must be a stack whose whole job is to own it — not whichever
+// module happens to want a federated role. Two modules used to create one each; that survived the
+// two-member topologies only because the two landed in different accounts, and it collided in
+// single-account (and would collide with an adopter's existing GitHub federation). platform#57.
+func TestOnlyTheOwnerModuleDeclaresTheOIDCProvider(t *testing.T) {
+	var offenders []string
+	err := filepath.WalkDir("../modules", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".tf" {
+			return err
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(body), `resource "aws_iam_openid_connect_provider"`) {
+			return nil
+		}
+		if filepath.Base(filepath.Dir(path)) != "oidc-provider" {
+			offenders = append(offenders, path)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Empty(t, offenders,
+		"only modules/oidc-provider may declare an OIDC provider; consume the ARN instead (platform#57)")
+}
+
+// ...and in no topology may two stacks create the same account-global name in the same account.
+// This is the check that would have caught both bugs with no apply and no AWS mutation: they were
+// invisible in the two-member topologies (the owners landed in different accounts) and only
+// surfaced as a 409 mid-apply in single-account.
+func TestOneOwnerPerAccountGlobalName(t *testing.T) {
+	hub := hubAccount(t)
+
+	for _, topo := range topologies() {
+		t.Run(topo.name, func(t *testing.T) {
+			// (account, global name) -> the stacks that would create it
+			creators := map[string]map[string][]string{}
+
+			for _, o := range globalNameOwners {
+				create, ok := renderInputs(t, o.stack, topo.env)["create"].(bool)
+				require.Truef(t, ok, "%s must gate its account-global names on a `create` input", o.stack)
+				if !create {
+					continue
+				}
+				acct := expectedAccount(o.class, hub, topo.nonprod, topo.prod)
+				if creators[acct] == nil {
+					creators[acct] = map[string][]string{}
+				}
+				creators[acct][o.owns] = append(creators[acct][o.owns], o.stack)
+			}
+
+			for acct, byName := range creators {
+				for name, stacks := range byName {
+					assert.Lenf(t, stacks, 1,
+						"account %s would get %d × %q from %v — an account-global name has exactly one owner",
+						acct, len(stacks), name, stacks)
+				}
+			}
+
+			// The estate must still be COMPLETE, not merely collision-free: every account we write to
+			// needs a provisioner, and the pipeline's account needs a federation entry or
+			// watch-ci-trigger trusts nothing.
+			for _, class := range []string{"management", "nonprod", "prod"} {
+				acct := expectedAccount(class, hub, topo.nonprod, topo.prod)
+				assert.NotEmptyf(t, creators[acct]["provisioner-role+boundary"],
+					"%s account (%s) has no provisioner role — nothing can apply there without admin", class, acct)
+			}
+			pipelineAcct := expectedAccount("nonprod", hub, topo.nonprod, topo.prod)
+			assert.NotEmpty(t, creators[pipelineAcct]["github-oidc-provider"],
+				"the pipeline account (%s) has no GitHub federation entry — watch-ci-trigger cannot be assumed", pipelineAcct)
+
+			// Prod federates GitHub nowhere. Nothing in GitHub reaches prod directly; the nonprod
+			// pipeline does, by assuming watch-prod-deploy.
+			if topo.prod != "" {
+				assert.Empty(t, creators[topo.prod]["github-oidc-provider"], "prod must have no GitHub OIDC provider")
+			}
+		})
 	}
 }
 
