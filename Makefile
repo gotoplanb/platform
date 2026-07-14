@@ -51,6 +51,8 @@ sweep: ## Billable-orphan check; nonzero exit if anything lingers
 	AWS_PROFILE=watch-ro scripts/sweep.sh
 doctor: ## Cross-account state-vs-reality drift: orphans (billable) + ghosts; nonzero on orphans (#44)
 	scripts/doctor.sh $(if $(SCOPE),$(SCOPE),both)
+drift: ## Click-ops report: writes not made by terragrunt + attribute drift (ADR-046). Read-only, $0
+	AWS_PROFILE=$(if $(AWS_PROFILE),$(AWS_PROFILE),watch-ro) scripts/drift-report.sh --hours $(if $(HOURS),$(HOURS),24)
 
 topology-check: ## Verify the configured deployment topology (read-only; PLAN=1 adds terragrunt plans) (#50)
 	scripts/topology-check.sh

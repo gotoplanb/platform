@@ -7,6 +7,7 @@ locals {
   labels = {
     "bug"              = { color = "d73a4a", description = "Something isn't working" }
     "documentation"    = { color = "0075ca", description = "Improvements or additions to documentation" }
+    "drift"            = { color = "b60205", description = "AWS was changed outside terragrunt — the nightly drift report (ADR-046) owns this label" }
     "duplicate"        = { color = "cfd3d7", description = "This issue or pull request already exists" }
     "enhancement"      = { color = "a2eeef", description = "New feature or request" }
     "epic"             = { color = "5319e7", description = "Tracking epic" }

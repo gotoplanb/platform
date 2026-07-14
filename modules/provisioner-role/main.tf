@@ -59,6 +59,19 @@ variable "create" {
 
 data "aws_caller_identity" "current" {}
 
+# Gating creation on `create` (ADR-045) turned these into counted resources, which moves their state
+# address. Declare the move so an existing estate upgrades in place instead of proposing to destroy
+# and recreate the role it is currently running as. A no-op for a fresh state.
+moved {
+  from = aws_iam_role.provisioner
+  to   = aws_iam_role.provisioner[0]
+}
+
+moved {
+  from = aws_iam_policy.boundary
+  to   = aws_iam_policy.boundary[0]
+}
+
 locals {
   account_id = data.aws_caller_identity.current.account_id
   vars = {

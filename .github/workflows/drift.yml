@@ -1,0 +1,104 @@
+# Nightly click-ops / drift report (ADR-046).
+#
+# Answers two different questions, because either alone lies to you:
+#   WHO changed AWS outside terragrunt  — CloudTrail management events, minus the identities that
+#                                         are allowed to write. Needs NO trail: Event history keeps
+#                                         90 days for free, so this costs $0 in AWS resources.
+#   WHAT actually drifted               — `terragrunt run --all plan -refresh-only`, which compares
+#                                         STATE to REALITY and reports nothing else. A plain plan
+#                                         would scream "500 to add" every time the estate is torn
+#                                         down, which for this project is a normal Tuesday.
+#
+# Read-only throughout: the same gha-plan OIDC role the PR plan uses, chaining into each member's
+# read-only watch-ci-plan role. This workflow cannot mutate an account.
+#
+# Reports by opening/updating ONE issue labelled `drift`, and closing it when the estate is clean —
+# so a quiet estate is silent, and a noisy one has exactly one place to look.
+name: drift report
+
+on:
+  schedule:
+    - cron: "0 13 * * *" # 13:00 UTC daily — after a typical build day, before the next one
+  workflow_dispatch: # so you can ask "did anyone click yesterday?" on demand
+
+permissions:
+  id-token: write # OIDC token to assume the read-only AWS role
+  contents: read
+  issues: write # the report IS an issue
+
+env:
+  AWS_REGION: us-east-1
+  TG_TF_PATH: tofu
+  TF_CLI_ARGS_plan: "-lock=false" # read-only: never take a state lock
+  WATCH_MEMBER_ROLE_NAME: watch-ci-plan
+  WATCH_NONPROD_ACCOUNT_ID: ${{ secrets.WATCH_NONPROD_ACCOUNT_ID }}
+  WATCH_PROD_ACCOUNT_ID: ${{ secrets.WATCH_PROD_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GHA_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Read pinned OpenTofu version
+        id: tofu-pin
+        run: echo "version=$(tr -d ' \t\n' < .opentofu-version)" >> "$GITHUB_OUTPUT"
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ steps.tofu-pin.outputs.version }}
+          tofu_wrapper: false
+
+      - name: Install Terragrunt
+        run: |
+          curl -sSL -o /usr/local/bin/terragrunt \
+            https://github.com/gruntwork-io/terragrunt/releases/download/v1.0.8/terragrunt_linux_amd64
+          chmod +x /usr/local/bin/terragrunt
+
+      - name: Drift report
+        id: report
+        run: |
+          set +e
+          AWS_PROFILE= scripts/drift-report.sh --hours 24 --markdown > report.md
+          echo "found=$?" >> "$GITHUB_OUTPUT"
+          cat report.md
+
+      # One issue, reused. Open/update it when there is something to say; close it when there is not
+      # — an issue that reopens every night for the same unfixed click-op is noise, and one that
+      # lingers after the estate is clean is a lie.
+      - name: Open, update, or close the drift issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FOUND: ${{ steps.report.outputs.found }}
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --label drift --state open --limit 1 --json number --jq '.[0].number // empty')
+
+          if [ "$FOUND" = "0" ]; then
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body "✓ Clean as of $(date -u +%Y-%m-%d): every write was terragrunt, the pipeline, or an AWS service, and state matches reality. Closing."
+              gh issue close "$existing"
+            fi
+            echo "clean — nothing to report"
+            exit 0
+          fi
+
+          {
+            echo
+            echo "---"
+            echo "_[drift report]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) · read-only \`gha-plan\` · ADR-046_"
+          } >> report.md
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file report.md
+          else
+            gh issue create --title "Drift: AWS was changed outside terragrunt" \
+              --label drift --body-file report.md
+          fi
