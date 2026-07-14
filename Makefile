@@ -8,7 +8,7 @@ export AWS_REGION ?= us-east-1
 
 export ENV ?= prod
 
-.PHONY: help create create-staging create-prod pipeline up policy-check policies \
+.PHONY: help bootstrap-image create create-staging create-prod pipeline up policy-check policies \
         teardown teardown-staging teardown-prod down \
         sweep doctor nuke tofu-pin recreate migrate seed deploy-frontend deploy live live-finish lambda-promote live-verify portal
 
@@ -17,6 +17,8 @@ help: ## List targets
 	  awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-20s\033[0m %s\n",$$1,$$2}'
 
 ## --- create (write: watch-bootstrap) ---
+bootstrap-image: ## FIRST RUN, before the first `make live` in a fresh account: build the app image from source -> <repo>:bootstrap (ADR-047)
+	AWS_PROFILE=$(if $(AWS_PROFILE),$(AWS_PROFILE),watch-bootstrap) scripts/bootstrap-image.sh $(if $(APP_DIR),--app-dir $(APP_DIR),)
 create: ## (Re)create both envs + pipeline, DAG-parallel (idempotent)
 	scripts/create.sh both -y
 create-staging: ## Create staging only

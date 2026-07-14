@@ -85,8 +85,22 @@ if ! (
     NEWEST=$(aws ecr describe-images --region "$REGION" --repository-name "$REPO" \
        --query 'reverse(sort_by(imageDetails,&imagePushedAt))[0].imageTags[0]' --output text 2>/dev/null)
     if [ -z "$NEWEST" ] || [ "$NEWEST" = "None" ]; then
-      echo "ERROR: ECR repo '$REPO' has no images to seed :bootstrap — build+push one first." >&2; exit 1
+      echo "ERROR: ECR repo '$REPO' has no image to boot from." >&2
+      echo "  The task definitions pull <repo>:bootstrap, which must exist before the services can" >&2
+      echo "  start — and the pipeline can only build it AFTER the estate exists. So build it once," >&2
+      echo "  from source, as a documented first-run step (ADR-047):" >&2
+      echo "" >&2
+      echo "      make bootstrap-image        # builds from ../watch, pushes <repo>:bootstrap" >&2
+      echo "" >&2
+      exit 1
     fi
+    # Re-tagging the NEWEST image is a convenience for an estate that has been torn down and is
+    # coming back — not a substitute for the first-run build. It resurrects whatever happens to be
+    # newest, which in a long-lived repo is a build from days ago; a fresh estate then comes up on
+    # STALE CODE, and every ordering bug we chased followed from that (platform#60/#61/#62). Say so
+    # loudly rather than pretending this is the same thing as deploying the current code.
+    echo "  NOTE: seeding :bootstrap from an EXISTING image, not from source. If you want the estate" >&2
+    echo "        to boot on current code, run 'make bootstrap-image' first (ADR-047)." >&2
     echo "Bootstrap: seeding :bootstrap from newest image ($NEWEST)..."
     MANIFEST=$(aws ecr batch-get-image --region "$REGION" --repository-name "$REPO" \
        --image-ids imageTag="$NEWEST" --query 'images[0].imageManifest' --output text)

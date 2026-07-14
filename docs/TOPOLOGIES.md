@@ -43,13 +43,19 @@ If it outgrows the sandbox, the same code moves to two accounts by filling in tw
 else changes: the IAM policies are identical in all three topologies, and only the *location*
 of the roles differs.
 
-**Setup:**
-- Leave `WATCH_NONPROD_ACCOUNT_ID` / `WATCH_PROD_ACCOUNT_ID` **unset** (or absent from `.env`).
-- `./bootstrap` once (state backend).
-- The one admin-shaped step: create the provisioner + boundary
-  (`docs/SECURITY.md` §5). After it, admin is not needed again — `make live`, teardown and CI
-  all run as `watch-provisioner`.
-- Then the normal `make live` lifecycle.
+**Setup — three run-once steps, then the lifecycle:**
+1. `./bootstrap` — the state backend (S3 + lock table).
+2. **The one admin-shaped step**: create the provisioner + boundary (`docs/SECURITY.md` §5).
+   After it, admin is not needed again — `make live`, teardown and CI all run as
+   `watch-provisioner`.
+3. **`make bootstrap-image`** — build the app image from source and push `<repo>:bootstrap`
+   (ADR-047). The ECS task definitions pull that tag, so it must exist before the services can
+   start — and the pipeline can only build it *after* the estate exists. A real chicken-and-egg,
+   and the same shape as step 2: a documented script beats an implicit fallback. It also means the
+   estate boots on **the code you are deploying**, rather than whatever image was lying around,
+   which is what caused the fresh-estate ordering bugs (platform#60/#61/#62).
+
+Then `make live` — and it is expected to complete **in one shot**, unattended.
 
 **If the account already runs GitHub Actions** — which a corporate sandbox usually does — set
 `WATCH_GITHUB_OIDC_EXISTS=1` so we adopt its existing `token.actions.githubusercontent.com`
