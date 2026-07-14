@@ -8,9 +8,14 @@ ever becomes code, it's a separate repo. You bring accounts; this repo brings ev
 inside them.
 
 The root `terragrunt.hcl` routes each stack by path: blank member IDs collapse every route
-to the current account (`cross=false`, no assume-role); filled IDs send staging-classed
-stacks to the nonprod member and prod-classed stacks to the prod member via provider
-assume-role. State always lives in the hub account's bucket.
+to the current account; filled IDs send staging-classed stacks to the nonprod member and
+prod-classed stacks to the prod member. State always lives in the hub account's bucket.
+
+Routing changes; **identity does not**. Every stack in every topology writes as the fenced
+`<project>-provisioner` role (ADR-044) — including in the account you are already in. Single
+account does not mean "no assume-role"; it means the assume-role does not cross an account
+boundary. The hub used to be exempt, and that exemption is exactly how `make live`'s helper
+steps ended up running as an admin key (ADR-046).
 
 Verify any topology before applying: **`make topology-check`** (read-only; `PLAN=1` adds
 representative terragrunt plans).
@@ -25,17 +30,34 @@ does.
 
 ---
 
-## 1. Single account
+## 1. Single account — the default, and the way to start
 
-Everything — staging, prod, pipeline, foundation — in one account. Right for trials, small
-shops, and cost-minimal setups. Resource names are `<project>-<env>-*`, so the two envs
-coexist without collisions.
+Everything — staging, prod, pipeline, foundation — in one account. This is what you get from a
+fresh clone with no `.env` at all, and it is deliberately the **path of least resistance for
+adoption**: it runs inside a sandbox/dev account you already have, with no organization, no
+account vending, and no conversation with anyone about creating accounts. Resource names are
+`<project>-<env>-*`, so staging and prod coexist without collisions. Proven end to end —
+`make live` → `teardown` → `sweep`, as the fenced role, zero denials (ADR-044 §6).
+
+If it outgrows the sandbox, the same code moves to two accounts by filling in two IDs. Nothing
+else changes: the IAM policies are identical in all three topologies, and only the *location*
+of the roles differs.
 
 **Setup:**
 - Leave `WATCH_NONPROD_ACCOUNT_ID` / `WATCH_PROD_ACCOUNT_ID` **unset** (or absent from `.env`).
-- Apply `./bootstrap` once (state backend), then the normal `make create` / lifecycle.
+- `./bootstrap` once (state backend).
+- The one admin-shaped step: create the provisioner + boundary
+  (`docs/SECURITY.md` §5). After it, admin is not needed again — `make live`, teardown and CI
+  all run as `watch-provisioner`.
+- Then the normal `make live` lifecycle.
 
-**Skip:** `member-ci/*` (no members to harden). `account/*` budgets apply to the one account.
+**If the account already runs GitHub Actions** — which a corporate sandbox usually does — set
+`WATCH_GITHUB_OIDC_EXISTS=1` so we adopt its existing `token.actions.githubusercontent.com`
+provider instead of colliding with it (ADR-045). We never contest infrastructure we did not
+create.
+
+**Skip:** `member-ci/*` (no members to harden). `account/*` budgets apply to the one account —
+and if that account's billing rolls up to an org you don't control, skip or adapt those too.
 
 ## 2. Two members of a NEW organization
 
