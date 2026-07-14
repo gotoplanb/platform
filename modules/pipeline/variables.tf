@@ -85,6 +85,10 @@ variable "staging" {
     private_subnet_ids      = list(string)
     app_sg_id               = string
     rollback_alarm_names    = list(string)
+    # The async worker (ADR-025) runs the SAME image as the app, a different command — and until
+    # platform#61 nothing promoted it, so it sat on the `bootstrap` placeholder forever. Empty when
+    # the env has no worker; the deploy action is then simply not created.
+    worker_service_name = optional(string, "")
   })
 }
 
@@ -102,6 +106,10 @@ variable "prod" {
     private_subnet_ids      = list(string)
     app_sg_id               = string
     rollback_alarm_names    = list(string)
+    # The async worker (ADR-025) runs the SAME image as the app, a different command — and until
+    # platform#61 nothing promoted it, so it sat on the `bootstrap` placeholder forever. Empty when
+    # the env has no worker; the deploy action is then simply not created.
+    worker_service_name = optional(string, "")
   })
 }
 

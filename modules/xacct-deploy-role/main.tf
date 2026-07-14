@@ -61,6 +61,10 @@ data "aws_iam_policy_document" "deploy" {
     actions = [
       "ecs:RegisterTaskDefinition",
       "ecs:DescribeServices",
+      # The worker's rolling deploy (platform#61). Everything else here is the blue/green task-set
+      # dance, which is why UpdateService — the plain, boring way to deploy a service with no load
+      # balancer — was never granted, and the worker was never promoted.
+      "ecs:UpdateService",
       "ecs:UpdateServicePrimaryTaskSet",
       "ecs:CreateTaskSet",
       "ecs:DeleteTaskSet",

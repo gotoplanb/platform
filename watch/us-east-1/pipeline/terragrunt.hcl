@@ -27,6 +27,7 @@ dependency "staging_app" {
   config_path = "../staging/app"
   mock_outputs = {
     cluster_name            = "watch-staging", service_name = "watch-staging"
+    worker_service_name     = "watch-staging-worker"
     production_listener_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-staging/x/y"
     test_listener_arn       = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-staging/x/z"
     blue_target_group_name  = "watch-staging-blue", green_target_group_name = "watch-staging-green"
@@ -40,6 +41,7 @@ dependency "prod_app" {
   config_path = "../prod/app"
   mock_outputs = {
     cluster_name            = "watch-prod", service_name = "watch-prod"
+    worker_service_name     = "watch-prod-worker"
     production_listener_arn = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/y"
     https_listener_arn      = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/h"
     test_listener_arn       = "arn:aws:elasticloadbalancing:us-east-1:000000000000:listener/app/watch-prod/x/z"
@@ -80,8 +82,11 @@ inputs = {
   prod_deploy_role_arn = local.acct.has_prod ? "arn:aws:iam::${local.acct.prod_account_id}:role/watch-prod-deploy" : ""
 
   staging = {
-    cluster_name            = dependency.staging_app.outputs.cluster_name
-    service_name            = dependency.staging_app.outputs.service_name
+    cluster_name = dependency.staging_app.outputs.cluster_name
+    service_name = dependency.staging_app.outputs.service_name
+    # The async worker (ADR-025), promoted with the same digest (platform#61). Null when the
+    # env has no worker -> "" -> the pipeline simply creates no deploy action for it.
+    worker_service_name     = coalesce(try(dependency.staging_app.outputs.worker_service_name, ""), "")
     task_family             = "watch-staging"
     production_listener_arn = dependency.staging_app.outputs.production_listener_arn
     test_listener_arn       = dependency.staging_app.outputs.test_listener_arn
@@ -95,8 +100,11 @@ inputs = {
   }
 
   prod = {
-    cluster_name            = dependency.prod_app.outputs.cluster_name
-    service_name            = dependency.prod_app.outputs.service_name
+    cluster_name = dependency.prod_app.outputs.cluster_name
+    service_name = dependency.prod_app.outputs.service_name
+    # The async worker (ADR-025), promoted with the same digest (platform#61). Null when the
+    # env has no worker -> "" -> the pipeline simply creates no deploy action for it.
+    worker_service_name     = coalesce(try(dependency.prod_app.outputs.worker_service_name, ""), "")
     task_family             = "watch-prod"
     production_listener_arn = dependency.prod_app.outputs.https_listener_arn # :443 (#13)
     test_listener_arn       = dependency.prod_app.outputs.test_listener_arn

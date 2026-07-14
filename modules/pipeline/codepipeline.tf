@@ -39,7 +39,11 @@ resource "aws_iam_role_policy" "pipeline" {
         ]
         Resource = "*"
       },
-      { Effect = "Allow", Action = ["ecs:RegisterTaskDefinition", "ecs:DescribeServices", "ecs:DescribeTaskDefinition"], Resource = "*" },
+      # UpdateService is for the WORKER's rolling deploy (platform#61). The app goes out via
+      # CodeDeploy blue/green, which never needed it — which is part of why the worker's promotion
+      # was missing for so long: nothing in this policy hinted that a service could be deployed
+      # any other way.
+      { Effect = "Allow", Action = ["ecs:RegisterTaskDefinition", "ecs:DescribeServices", "ecs:DescribeTaskDefinition", "ecs:UpdateService"], Resource = "*" },
       {
         # Staging only — prod's ECS roles are PassRole'd by the cross-account deploy role in watch-prod.
         Effect    = "Allow"
@@ -108,6 +112,7 @@ resource "aws_codepipeline" "this" {
       provider        = "CodeDeployToECS"
       version         = "1"
       input_artifacts = ["build"]
+      run_order       = 1
       configuration = {
         ApplicationName                = module.staging.app_name
         DeploymentGroupName            = module.staging.deployment_group_name
@@ -115,6 +120,28 @@ resource "aws_codepipeline" "this" {
         TaskDefinitionTemplatePath     = "taskdef-staging.json"
         AppSpecTemplateArtifact        = "build"
         AppSpecTemplatePath            = "appspec-staging.yaml"
+      }
+    }
+
+    # Promote the WORKER with the same digest (platform#61). It has no load balancer, so it needs no
+    # blue/green — a rolling ECS deploy that swaps the image on its own task definition. run_order 2:
+    # the app (and its migrations, via the BeforeAllowTraffic hook) lands first, so the worker never
+    # starts against a schema that hasn't been migrated yet.
+    dynamic "action" {
+      for_each = var.staging.worker_service_name != "" ? [1] : []
+      content {
+        name            = "DeployStagingWorker"
+        category        = "Deploy"
+        owner           = "AWS"
+        provider        = "ECS"
+        version         = "1"
+        input_artifacts = ["build"]
+        run_order       = 2
+        configuration = {
+          ClusterName = var.staging.cluster_name
+          ServiceName = var.staging.worker_service_name
+          FileName    = "imagedefinitions-staging-worker.json"
+        }
       }
     }
   }
@@ -179,6 +206,27 @@ resource "aws_codepipeline" "this" {
         TaskDefinitionTemplatePath     = "taskdef-prod.json"
         AppSpecTemplateArtifact        = "build"
         AppSpecTemplatePath            = "appspec-prod.yaml"
+      }
+    }
+
+    # The prod worker, same digest, same reasoning (platform#61). Cross-account when prod is a
+    # separate account: the action assumes the same prod deploy role the app deploy uses.
+    dynamic "action" {
+      for_each = var.prod.worker_service_name != "" ? [1] : []
+      content {
+        name            = "DeployProdWorker"
+        category        = "Deploy"
+        owner           = "AWS"
+        provider        = "ECS"
+        version         = "1"
+        input_artifacts = ["build"]
+        run_order       = 2
+        role_arn        = var.prod_deploy_role_arn != "" ? var.prod_deploy_role_arn : null
+        configuration = {
+          ClusterName = var.prod.cluster_name
+          ServiceName = var.prod.worker_service_name
+          FileName    = "imagedefinitions-prod-worker.json"
+        }
       }
     }
   }
