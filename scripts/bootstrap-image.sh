@@ -69,6 +69,17 @@ aws ecr get-login-password --region "$REGION" |
 # fails to exec, and is reported by ECS as a task that stopped — which looks exactly like a crash
 # loop and costs an hour to diagnose.
 docker build --platform linux/amd64 -t "${REPO_URL}:bootstrap" "$BUILD_CTX"
+
+# ECR tags are IMMUTABLE (deliberate: real builds promote by digest, never by overwriting a tag).
+# The `:bootstrap` seed tag is the one exception we intentionally refresh each first-run — and
+# teardown keeps the foundation account, so a re-run finds the previous `:bootstrap` still there and
+# the push fails "tag is immutable" (found on the fresh one-shot re-run). Delete the seed tag first
+# so a re-run pushes CURRENT code. Refresh creds first — the multi-minute build can outlive the
+# assumed-role session (same reason as the confirmation below). The docker login token stays valid
+# (12h), so the push itself is unaffected. Best-effort: absent tag / first run is not an error.
+xacct_assume "$(xacct_account_for foundation)" >/dev/null 2>&1 || true
+aws ecr batch-delete-image --region "$REGION" --repository-name "$PROJECT" \
+  --image-ids imageTag=bootstrap >/dev/null 2>&1 || true
 docker push "${REPO_URL}:bootstrap"
 
 # The push above is the deliverable. The confirmation below is best-effort: a multi-minute build can
