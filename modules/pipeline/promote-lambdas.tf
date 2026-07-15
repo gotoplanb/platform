@@ -4,10 +4,12 @@
 # directly. Build therefore mutated the running estate, and on a fresh `make live` it deadlocked:
 #
 #   Build promotes new Lambda code  ->  new code meets the OLD schema (migrations have not run;
-#   they run in CodeDeploy's BeforeAllowTraffic hook, one stage later)  ->  every Step Functions
-#   execution fails (`column incidents_incident.number does not exist`)  ->  that trips the
-#   watch-<env>-escalation-failed deploy-gate alarm  ->  CodeDeploy refuses to install  ->  THE
-#   MIGRATIONS THAT WOULD HAVE FIXED IT NEVER RUN. Re-running does not help: the alarm is still on.
+#   they run in CodeDeploy's BeforeAllowTraffic hook, one stage later)  ->  the escalation Lambdas
+#   throw (`column incidents_incident.number does not exist`)  ->  that trips the
+#   watch-<env>-escalation-engine-error deploy gate (ADR-048)  ->  CodeDeploy refuses to install  ->
+#   THE MIGRATIONS THAT WOULD HAVE FIXED IT NEVER RUN. (The gate now FILLs missing data to 0 so it
+#   self-resets once the Lambdas stop throwing, but correct ordering is still what keeps it from
+#   tripping at all.)
 #
 # So Build now only builds and publishes the zip. This promotes it, at run_order 3 in the deploy
 # stage — behind the app (1) and the worker (2), i.e. behind the migration hook. Build produces,

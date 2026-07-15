@@ -20,11 +20,21 @@ output "lambda_role_arn" {
 }
 
 output "executions_failed_alarm_arn" {
-  description = "Alarm to attach an SNS action to in #11."
+  description = "On-call/KPI alarm (missed escalation OR engine error) — attach an SNS action in #11. NOT the deploy gate (ADR-048)."
   value       = aws_cloudwatch_metric_alarm.executions_failed.arn
 }
 
 output "executions_failed_alarm_name" {
-  description = "Alarm name for the deploy gate (#10)."
+  description = "On-call/KPI alarm name (ADR-001). NOT the deploy gate — see engine_error_alarm_name."
   value       = aws_cloudwatch_metric_alarm.executions_failed.alarm_name
+}
+
+output "engine_error_alarm_arn" {
+  description = "Deploy-gate alarm (LambdaFunctionsFailed) — CodeDeploy auto-rollback (ADR-048)."
+  value       = aws_cloudwatch_metric_alarm.engine_error.arn
+}
+
+output "engine_error_alarm_name" {
+  description = "Deploy-gate alarm name for CodeDeploy rollback_alarm_names (ADR-048)."
+  value       = aws_cloudwatch_metric_alarm.engine_error.alarm_name
 }

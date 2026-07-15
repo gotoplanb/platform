@@ -99,7 +99,7 @@ inputs = {
     task_role_arn           = dependency.staging_app.outputs.task_role_arn
     private_subnet_ids      = dependency.staging_network.outputs.private_subnet_ids
     app_sg_id               = dependency.staging_network.outputs.app_sg_id
-    rollback_alarm_names    = ["watch-staging-escalation-failed", "watch-staging-alb-5xx", "watch-staging-target-5xx"]
+    rollback_alarm_names    = ["watch-staging-escalation-engine-error", "watch-staging-alb-5xx", "watch-staging-target-5xx"]
   }
 
   prod = {
@@ -118,6 +118,6 @@ inputs = {
     task_role_arn           = dependency.prod_app.outputs.task_role_arn
     private_subnet_ids      = dependency.prod_network.outputs.private_subnet_ids
     app_sg_id               = dependency.prod_network.outputs.app_sg_id
-    rollback_alarm_names    = ["watch-prod-escalation-failed", "watch-prod-alb-5xx", "watch-prod-target-5xx"]
+    rollback_alarm_names    = ["watch-prod-escalation-engine-error", "watch-prod-alb-5xx", "watch-prod-target-5xx"]
   }
 }

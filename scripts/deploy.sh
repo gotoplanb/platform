@@ -80,8 +80,10 @@ for _ in $(seq 1 100); do
           --query "deploymentInfo.errorInformation.[code,message]" --output text 2>/dev/null |
           grep -q ALARM_ACTIVE && {
           echo "  → CodeDeploy stopped $app on an ACTIVE ALARM. On a FRESH estate this is usually"
-          echo "    the escalation-failed alarm: Step Functions executions failing because the code"
-          echo "    is ahead of the schema. Check: aws cloudwatch describe-alarms --alarm-names ${app}-escalation-failed"
+          echo "    the ${app}-escalation-engine-error gate: the decision/commit Lambdas are throwing"
+          echo "    (a broken image, or code ahead of the schema). Check the alarm and the Lambda logs:"
+          echo "    aws cloudwatch describe-alarms --alarm-names ${app}-escalation-engine-error"
+          echo "    (A missed-incident alarm, ${app}-escalation-failed, no longer gates deploys — ADR-048.)"
         }
       done
       exit 1

@@ -62,5 +62,5 @@ inputs = {
   execution_role_arn      = dependency.app.outputs.execution_role_arn
   task_role_arn           = dependency.app.outputs.task_role_arn
   worker_task_role_arn    = try(dependency.app.outputs.worker_task_role_arn, null) == null ? "" : dependency.app.outputs.worker_task_role_arn
-  rollback_alarm_names    = ["watch-prod-escalation-failed", "watch-prod-alb-5xx", "watch-prod-target-5xx"]
+  rollback_alarm_names    = ["watch-prod-escalation-engine-error", "watch-prod-alb-5xx", "watch-prod-target-5xx"]
 }

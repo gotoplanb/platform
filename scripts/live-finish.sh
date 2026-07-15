@@ -4,8 +4,8 @@
 # aborted make target + the blocked pipeline never reached. Idempotent — safe to re-run.
 #
 # Steps (order matters): migrate -> promote escalation Lambdas -> seed -> app DNS records.
-# Lambdas are promoted BEFORE seeding so the demo incident's escalation execution succeeds and the
-# `watch-<env>-escalation-failed` deploy-gate alarm never trips. Becomes a no-op / unnecessary once
+# Lambdas are promoted BEFORE seeding so the demo incident's escalation Lambdas don't throw and trip
+# the `watch-<env>-escalation-engine-error` deploy gate (ADR-048). Becomes a no-op / unnecessary once
 # AWS clears the holds (the pipeline then does migrate-hook + Lambda promote + frontend itself).
 #
 # Usage: scripts/live-finish.sh [both|staging|prod]     (default: both)

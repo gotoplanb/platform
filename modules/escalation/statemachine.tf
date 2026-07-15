@@ -80,11 +80,15 @@ resource "aws_sfn_state_machine" "this" {
   tags = merge(var.tags, { Name = var.name })
 }
 
-# A failed execution = a missed escalation (T3 SLA elapsed, EscalationExhausted) or an
-# engine error — alarmable (ADR-001). SNS action is wired in #11.
+# The OPERATIONS / on-call signal (ADR-001): a failed execution is a missed escalation (T3 SLA
+# elapsed with no resolution, the deliberate EscalationExhausted Fail) OR an engine error. This is
+# the escalation-correctness KPI — it pages on-call. It is NOT wired to the deploy gate: a
+# legitimately-unresolved incident is a real event, not a broken deploy, and must never roll back a
+# deployment (that conflation latched the gate on a single seeded incident — platform#64, ADR-048).
+# SNS action is wired in #11.
 resource "aws_cloudwatch_metric_alarm" "executions_failed" {
   alarm_name          = "${var.name}-escalation-failed"
-  alarm_description   = "Watch escalation executions failed (missed escalation or engine error)."
+  alarm_description   = "Watch escalation executions failed (missed escalation or engine error) — on-call/KPI, NOT the deploy gate."
   namespace           = "AWS/States"
   metric_name         = "ExecutionsFailed"
   statistic           = "Sum"
@@ -96,6 +100,43 @@ resource "aws_cloudwatch_metric_alarm" "executions_failed" {
 
   dimensions = {
     StateMachineArn = aws_sfn_state_machine.this.arn
+  }
+
+  tags = var.tags
+}
+
+# The DEPLOY GATE (ADR-048). CodeDeploy rolls back when THIS alarm is active. It watches
+# LambdaFunctionsFailed — the decision/commit Lambdas throwing (a broken image, code ahead of the
+# schema: the platform#62/#63 family) — which is exactly "this deploy broke the engine". A
+# deliberate EscalationExhausted Fail raises no Lambda failure, so a missed incident no longer stops
+# deploys. FILL(m1, 0) makes missing data an explicit 0 so the alarm self-resets to OK once the
+# Lambdas stop failing; without it a silent AWS/States metric leaves the alarm latched in ALARM and
+# the very deploy that would FIX a broken Lambda can never install (the deadlock platform#62 hit).
+resource "aws_cloudwatch_metric_alarm" "engine_error" {
+  alarm_name          = "${var.name}-escalation-engine-error"
+  alarm_description   = "Watch escalation Lambda invocations failed — the deploy gate (a broken engine, not a missed incident)."
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "e1"
+    expression  = "FILL(m1, 0)"
+    label       = "LambdaFunctionsFailed (missing filled to 0 so the gate self-resets)"
+    return_data = true
+  }
+  metric_query {
+    id = "m1"
+    metric {
+      namespace   = "AWS/States"
+      metric_name = "LambdaFunctionsFailed"
+      period      = 300
+      stat        = "Sum"
+      dimensions = {
+        StateMachineArn = aws_sfn_state_machine.this.arn
+      }
+    }
   }
 
   tags = var.tags
