@@ -50,11 +50,12 @@ locals {
     { name = "AWS_REGION", value = var.region },
     { name = "ESCALATION_STATE_MACHINE_ARN", value = local.escalation_state_machine_arn },
     { name = "ESCALATION_LOCAL_MODE", value = "0" }, # real Step Functions engine (default is local)
-    # AI-drafted RCA (ADR-033/034). Cloud drafts via Bedrock (the `conduct` provider is a local-dev
-    # backend, unreachable from here). The path is inert until the `rca_ai_draft` flag is on AND
-    # Bedrock model access is granted in-account (manual console step) — until then it soft-fails
-    # with a flash, never a 500.
-    { name = "RCA_AI_PROVIDER", value = "bedrock" },
+    # AI-drafted RCA (ADR-033/034). Defaults to `stub` (var.rca_ai_provider) so the single-account
+    # adoption path needs no Bedrock model-access request; set the var to `bedrock` in an account
+    # that has been granted Anthropic model access (manual console step). The path is inert until the
+    # `rca_ai_draft` flag is on, and on bedrock without access it soft-fails with a flash, never a
+    # 500. (The `conduct` provider is a local-dev backend, unreachable from here.)
+    { name = "RCA_AI_PROVIDER", value = var.rca_ai_provider },
     { name = "BEDROCK_REGION", value = var.region },
     { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
     # ALB-only ingress (SG) is the trust boundary; #13 tightens this to the real domain.

@@ -95,6 +95,22 @@ variable "bedrock_model_id" {
   default     = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 }
 
+variable "rca_ai_provider" {
+  type        = string
+  description = <<-EOT
+    Provider for the in-app AI RCA draft (ADR-033/034): stub | bedrock. Defaults to `stub` so the
+    single-account adoption path needs NO Bedrock model-access request — the draft is deterministic
+    and offline. Set to `bedrock` only in an account where Anthropic model access has been granted
+    (a manual console step); otherwise the AI-RCA button soft-fails with a flash. Orthogonal to
+    `make live` — Smoke's RCA is the deterministic timeline, and the handoff brief has its own stub.
+  EOT
+  default     = "stub"
+  validation {
+    condition     = contains(["stub", "bedrock"], var.rca_ai_provider)
+    error_message = "rca_ai_provider must be \"stub\" or \"bedrock\"."
+  }
+}
+
 variable "appconfig_environment_name" {
   type = string
 }
