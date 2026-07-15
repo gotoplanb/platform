@@ -43,8 +43,12 @@ PROJECT="${WATCH_PROJECT:-watch}"
 # shellcheck source=lib/xacct.sh
 . scripts/lib/xacct.sh
 
-[ -f "$APP_DIR/Dockerfile" ] || {
-  echo "ERROR: no Dockerfile in $APP_DIR — point at the app repo with --app-dir or WATCH_APP_DIR." >&2
+# The image builds from the app repo's backend/ (context AND Dockerfile), exactly as the pipeline's
+# buildspec does: `docker build ... backend/`. Keep this in lockstep with buildspec.yml — a boot
+# image built differently from the promoted one is a trap.
+BUILD_CTX="$APP_DIR/backend"
+[ -f "$BUILD_CTX/Dockerfile" ] || {
+  echo "ERROR: no Dockerfile at $BUILD_CTX — point --app-dir / WATCH_APP_DIR at the app repo root." >&2
   exit 1
 }
 
@@ -55,7 +59,7 @@ xacct_assume "$(xacct_account_for foundation)" >/dev/null
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 REPO_URL="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}"
 
-echo "Building ${PROJECT}:bootstrap from ${APP_DIR}"
+echo "Building ${PROJECT}:bootstrap from ${BUILD_CTX}"
 echo "  → ${REPO_URL}"
 
 aws ecr get-login-password --region "$REGION" |
@@ -64,10 +68,14 @@ aws ecr get-login-password --region "$REGION" |
 # linux/amd64 explicitly: Fargate runs amd64, and an arm64 image built on an Apple laptop starts,
 # fails to exec, and is reported by ECS as a task that stopped — which looks exactly like a crash
 # loop and costs an hour to diagnose.
-docker build --platform linux/amd64 -t "${REPO_URL}:bootstrap" "$APP_DIR"
+docker build --platform linux/amd64 -t "${REPO_URL}:bootstrap" "$BUILD_CTX"
 docker push "${REPO_URL}:bootstrap"
 
+# The push above is the deliverable. The confirmation below is best-effort: a multi-minute build can
+# outlive the assumed-role session, so re-establish creds and never let a failed *confirmation* mask
+# a *successful* push (that would send an adopter chasing a non-problem — it did, the first time).
+xacct_assume "$(xacct_account_for foundation)" >/dev/null 2>&1 || true
 DIGEST=$(aws ecr describe-images --region "$REGION" --repository-name "$PROJECT" \
-  --image-ids imageTag=bootstrap --query 'imageDetails[0].imageDigest' --output text)
-echo "OK — ${PROJECT}:bootstrap = ${DIGEST}"
+  --image-ids imageTag=bootstrap --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || echo "?")
+echo "OK — ${PROJECT}:bootstrap pushed${DIGEST:+ (${DIGEST})}"
 echo 'The estate will now come up on THIS code. Run `make live` next.'
