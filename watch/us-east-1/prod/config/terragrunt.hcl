@@ -22,6 +22,7 @@ inputs = {
     new_triage_ui            = false # release flag: off in prod until proven in staging
     auto_route_on_escalation = true
     devops_agent             = "off" # operational toggle (ADR-014); work flips prod to "on"
+    handoff_brief            = true  # ADR-040/042: reserve+fill the tier handoff card
   }
 
   tags = { env = local.env.env }

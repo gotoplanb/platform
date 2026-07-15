@@ -22,6 +22,7 @@ inputs = {
     new_triage_ui            = true # exercise the new UI in staging first
     auto_route_on_escalation = true
     devops_agent             = "off"
+    handoff_brief            = true # ADR-040/042: reserve+fill the tier handoff card (on locally; must mirror in the cloud)
   }
 
   tags = { env = local.env.env }
