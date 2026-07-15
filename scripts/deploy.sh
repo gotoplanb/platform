@@ -29,11 +29,16 @@ for a in "$@"; do case "$a" in --no-wait) NOWAIT=1 ;; *) echo "unknown flag: $a"
 # Pre-flight: as the last step of `make live`, create.sh has just triggered CodeDeploy to place
 # the initial (bootstrap) tasks. If we StartPipelineExecution while that deployment is still in
 # flight, DeployStaging fails "Another deployment ... already in progress." Wait for both DGs to
-# go idle first (bounded ~5 min; then proceed and let the pipeline surface any real problem).
+# go idle first. The ceiling must cover a full blue/green: the initial placement runs the same
+# ECSLinear10PercentEvery1Minutes config as a real deploy (~10 min traffic shift + ~5 min
+# termination wait), so a 5-min bound timed out and the pipeline collided with it on a fresh
+# one-shot (platform#66). Bound ~30 min; the loop breaks the instant the DG is idle, so a fast
+# placement doesn't pay the ceiling — only a genuinely stuck one does, and then we proceed and let
+# the pipeline surface it.
 for app in watch-staging watch-prod; do
   dg=$(aws deploy list-deployment-groups --region "$REGION" --application-name "$app" --query 'deploymentGroups[0]' --output text 2>/dev/null)
   [ -n "$dg" ] && [ "$dg" != "None" ] || continue
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 180); do
     busy=$(aws deploy list-deployments --region "$REGION" --application-name "$app" --deployment-group-name "$dg" \
       --include-only-statuses Created Queued InProgress Ready --query 'length(deployments)' --output text 2>/dev/null)
     [ "${busy:-0}" = 0 ] && break
