@@ -87,6 +87,12 @@ live: ## ONE approval: stand up the platform + BOTH app envs (create, migrate+se
 	scripts/create.sh both -y
 	scripts/db.sh migrate staging
 	scripts/db.sh migrate prod
+	# Real Lambda code BEFORE seed. The escalation stack ships a placeholder handler (the pipeline
+	# fills it), and seed creates demo incidents which start Step Functions executions. Seed against
+	# the placeholder = "No module named 'record_token'" on every execution -> the escalation-failed
+	# deploy-gate alarm trips -> the pipeline deploy that follows is blocked (platform#63). So promote
+	# real code here, out of band, exactly as migrate provisions the schema before seed touches it.
+	scripts/lambda-promote.sh both
 	scripts/db.sh seed staging
 	scripts/db.sh seed prod
 	scripts/deploy-frontend.sh staging
