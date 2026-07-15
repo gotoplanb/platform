@@ -52,11 +52,14 @@ st() { # status of a stage's action in this execution
     --query "actionExecutionDetails[?stageName=='$1'].status | [0]" --output text 2>/dev/null
 }
 
-echo "Waiting through Build -> DeployStaging -> DAST -> prod approval gate..."
+echo "Waiting through Build -> DeployStaging -> DAST -> Smoke -> prod approval gate..."
 for _ in $(seq 1 100); do
-  B=$(st Build); D=$(st DeployStaging); Z=$(st DAST); A=$(st ApproveProd)
-  echo "  Build=$B Deploy=$D DAST=$Z Approve=$A"
-  for s in "$B" "$D" "$Z"; do
+  B=$(st Build); D=$(st DeployStaging); Z=$(st DAST); K=$(st Smoke); A=$(st ApproveProd)
+  echo "  Build=$B Deploy=$D DAST=$Z Smoke=$K Approve=$A"
+  # EVERY pre-gate stage, Smoke included. Smoke was missing here, so a failed Smoke went undetected
+  # and the loop ran to its timeout and exited 0 — make live reported success while the pipeline had
+  # failed (platform#64). The gate is not the only place a run can die.
+  for s in "$B" "$D" "$Z" "$K"; do
     if [ "$s" = "Failed" ]; then
       # Say WHY. "inspect the pipeline" sent me hunting through the console for an hour on a fresh
       # estate; the cause was already in the API (platform#62). CodePipeline's messages are terse
@@ -88,4 +91,9 @@ for _ in $(seq 1 100); do
   [ "$A" = "Succeeded" ] && { echo "Prod already promoted."; exit 0; }
   sleep 20
 done
-echo "Still running after the wait window — check the console."; exit 0
+# Falling out of the loop means ~33 min elapsed without the pipeline reaching the approval gate and
+# without a stage failing outright — a stuck run, not a success. Exiting 0 here is what let make live
+# claim victory on a pipeline that never finished (platform#64). Non-zero, and say where it is.
+echo "TIMED OUT after ~33m without reaching the prod approval gate. Last seen:"
+echo "  Build=$(st Build) Deploy=$(st DeployStaging) DAST=$(st DAST) Smoke=$(st Smoke) Approve=$(st ApproveProd)"
+exit 1
