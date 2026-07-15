@@ -60,7 +60,12 @@ resource "aws_iam_role_policy" "pipeline" {
         Resource = "*"
       },
       {
-        # Staging only — prod's ECS roles are PassRole'd by the cross-account deploy role in watch-prod.
+        # ECS task roles the pipeline passes when it registers task definitions. Staging always.
+        # Prod's roles are normally PassRole'd by the cross-account deploy role in watch-prod — but
+        # in SINGLE-account there is no cross-account role (prod_deploy_role_arn == ""), so the
+        # DeployProd action runs as THIS pipeline role and must pass prod's roles directly. Omitting
+        # them fails DeployProd with "not authorized to perform: iam:PassRole on watch-prod-task"
+        # (single-account, platform#67).
         #
         # The WORKER has its OWN task role (ADR-025 splits them: the app only SENDs to SQS, the worker
         # CONSUMES), so promoting it means passing a role the app deploy never had to. Omitting it
@@ -68,11 +73,15 @@ resource "aws_iam_role_policy" "pipeline" {
         # names neither IAM nor the role, and sent me looking at ecs:* actions for two pipeline runs.
         Effect = "Allow"
         Action = ["iam:PassRole"]
-        Resource = compact([
+        Resource = compact(concat([
           var.staging.execution_role_arn,
           var.staging.task_role_arn,
           var.staging.worker_task_role_arn,
-        ])
+          ], var.prod_deploy_role_arn == "" ? [
+          var.prod.execution_role_arn,
+          var.prod.task_role_arn,
+          var.prod.worker_task_role_arn,
+        ] : []))
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
       ], var.prod_deploy_role_arn != "" ? [
